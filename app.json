@@ -11,6 +11,23 @@
     "ios": {
       "supportsTablet": true
     },
+
+     "extra": {
+      "firebaseConfig": {
+        "apiKey": "AIzaSyD1lTp860WFStCO05NSXbFqE2R5BBWdYgw  ",
+        "authDomain": "doancuoiky-bf19d.firebaseapp.com",
+        "databaseURL": "https://doancuoiky-bf19d-default-rtdb.firebaseio.com",
+        "projectId": "doancuoiky-bf19d",
+        "storageBucket": "doancuoiky-bf19d.firebasestorage.app",
+        "messagingSenderId": "440136984740",
+        "appId": "1:440136984740:web:96b0246883f1a7ad785e31"
+      },
+      "cloudinary": {
+        "cloudName": "djrlah4ry",
+        "uploadPreset": "foodapp_unsigned"
+      }
+    },
+    
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
