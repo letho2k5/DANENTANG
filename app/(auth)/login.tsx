@@ -52,7 +52,7 @@ export default function LoginScreen() {
       if (role === "admin") {
         router.replace("/admin"); // tương đương AdminActivity
       } else {
-        router.replace("/"); // hoặc "/(tabs)" tuỳ cấu trúc app bạn
+        router.replace("/(tabs)"); // hoặc "/(tabs)" tuỳ cấu trúc app bạn
       }
     } catch (e: any) {
       setMessage("Lỗi đăng nhập: " + (e.message ?? "Không xác định"));

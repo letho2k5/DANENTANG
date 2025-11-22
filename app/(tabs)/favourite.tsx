@@ -4,14 +4,14 @@ import { useRouter } from "expo-router";
 import { onValue, ref, remove } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import type { Food } from "../../models/Food";
 import { auth, db } from "../../services/firebase";

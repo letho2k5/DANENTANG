@@ -1,4 +1,3 @@
-// app/(auth)/register.tsx
 import { useRouter } from "expo-router";
 import {
   createUserWithEmailAndPassword,
@@ -16,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+// Giả định đường dẫn này là đúng cho cấu hình Firebase của bạn
 import { auth, db } from "../../services/firebase";
 
 export default function RegisterScreen() {
@@ -25,7 +25,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
-  const [birthDate, setBirthDate] = useState(""); // bạn có thể làm DatePicker sau
+  const [birthDate, setBirthDate] = useState("");
   const [gender, setGender] = useState<"Male" | "Female" | "Other">("Male");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -69,76 +69,84 @@ export default function RegisterScreen() {
     return true;
   }
 
-  async function onRegister() {
-    if (!validate()) return;
+  // Hàm xử lý logic đăng ký thực tế
+  async function handleRegisterConfirmed() {
+    // Dù đã validate trước đó, ta vẫn check lại để đảm bảo
+    if (!validate()) return; 
 
+    try {
+      setLoading(true);
+
+      // 1. Kiểm tra email đã dùng chưa
+      const result = await fetchSignInMethodsForEmail(auth, email.trim());
+      if (result.length > 0) {
+        Alert.alert(
+          "Lỗi",
+          "Email is already in use. Please choose a different email."
+        );
+        return; // Dừng lại ở đây
+      }
+
+      // 2. Tạo tài khoản Firebase Auth
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
+
+      const uid = cred.user.uid;
+      const userProfile = {
+        uid,
+        fullName: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        birthDate: birthDate.trim(),
+        gender,
+        balance: 1000000.0,
+        role: "user",
+      };
+
+      // 3. Lưu thông tin người dùng vào Realtime Database
+      await set(ref(db, `users/${uid}`), userProfile);
+
+      Alert.alert("Thành công", "Registration successful", [
+        {
+          text: "OK",
+          onPress: () => router.replace("/(auth)/login"),
+        },
+      ]);
+
+    } catch (e: any) {
+      // 4. Bắt lỗi (Lỗi mạng, lỗi Firebase, v.v.)
+      Alert.alert("Lỗi", e.message ?? "Registration failed");
+    } finally {
+      // 5. Luôn kết thúc bằng việc tắt loading
+      setLoading(false);
+    }
+  }
+
+  function onRegister() {
+    if (!validate()) return;
+    
+    // Hiển thị hộp thoại xác nhận trước khi thực hiện logic Firebase
     Alert.alert(
       "Agree to Share Data",
       "We will store your information on Firebase to provide the service. This information may be used to personalize the user experience. Do you agree?",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Agree",
-          onPress: async () => {
-            try {
-              setLoading(true);
-              // check email đã dùng chưa (fetchSignInMethodsForEmail) :contentReference[oaicite:3]{index=3}
-              const result = await fetchSignInMethodsForEmail(
-                auth,
-                email.trim(),
-              );
-              if (result.length > 0) {
-                Alert.alert(
-                  "Lỗi",
-                  "Email is already in use. Please choose a different email.",
-                );
-                setLoading(false);
-                return;
-              }
-
-              const cred = await createUserWithEmailAndPassword(
-                auth,
-                email.trim(),
-                password,
-              );
-
-              const uid = cred.user.uid;
-              const userProfile = {
-                uid,
-                fullName: fullName.trim(),
-                email: email.trim(),
-                phone: phone.trim(),
-                address: address.trim(),
-                birthDate: birthDate.trim(),
-                gender,
-                balance: 1000000.0,
-                role: "user", // thêm mặc định role user
-              };
-
-              await set(ref(db, `users/${uid}`), userProfile);
-
-              Alert.alert("Thành công", "Registration successful", [
-                {
-                  text: "OK",
-                  onPress: () =>
-                    router.replace("/(auth)/login"), // về màn login
-                },
-              ]);
-            } catch (e: any) {
-              Alert.alert("Lỗi", e.message ?? "Registration failed");
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ],
+        // Gọi hàm handleRegisterConfirmed khi người dùng nhấn "Agree"
+        { text: "Agree", onPress: handleRegisterConfirmed },
+      ]
     );
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+    // Sử dụng flex: 1 để ScrollView chiếm toàn bộ màn hình
+    <ScrollView 
+        contentContainerStyle={styles.container} 
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled" // Giữ bàn phím không bị đóng đột ngột
     >
       <Text style={styles.title}>Register</Text>
 
@@ -180,7 +188,6 @@ export default function RegisterScreen() {
         onChangeText={setBirthDate}
       />
 
-      {/* Gender simple buttons */}
       <View style={styles.genderRow}>
         {["Male", "Female", "Other"].map((g) => (
           <TouchableOpacity
@@ -224,7 +231,7 @@ export default function RegisterScreen() {
       <Button
         title={loading ? "Registering..." : "Register"}
         onPress={onRegister}
-        disabled={loading}
+        disabled={loading} // Nút bị vô hiệu hóa khi loading = true
       />
 
       <View style={{ height: 16 }} />
@@ -241,12 +248,17 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     padding: 24,
-    alignItems: "center",
     backgroundColor: "white",
+    flexGrow: 1, // Đảm bảo ScrollView cuộn được
+    alignItems: "center", // Giữ lại căn giữa nếu muốn các TextInput có width không phải 100%
   },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 16 },
+  title: { 
+    fontSize: 24, 
+    fontWeight: "bold", 
+    marginBottom: 16,
+  },
   input: {
-    width: "100%",
+    width: "100%", // Đảm bảo chiếm toàn bộ chiều rộng
     borderWidth: 1,
     borderColor: "#ccc",
     borderRadius: 8,
@@ -256,7 +268,7 @@ const styles = StyleSheet.create({
   genderRow: {
     flexDirection: "row",
     marginBottom: 12,
-    alignSelf: "stretch",
+    width: "100%", // Chiếm 100% để căn chỉnh đúng
     justifyContent: "space-between",
   },
   genderButton: {

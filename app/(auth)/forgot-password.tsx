@@ -19,18 +19,14 @@ export default function ForgotPasswordScreen() {
     try {
       setLoading(true);
       await sendPasswordResetEmail(auth, email.trim());
-      Alert.alert(
-        "Thành công",
-        "Đã gửi email khôi phục. Vui lòng kiểm tra hộp thư!",
-        [
-          {
-            text: "OK",
-            onPress: () => router.back(),
-          },
-        ],
-      );
+      Alert.alert("Thành công", "Đã gửi email khôi phục. Vui lòng kiểm tra hộp thư!", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch (e: any) {
-      Alert.alert("Lỗi", e.message ?? "Không gửi được email khôi phục");
+      console.error("Forgot password error:", e);
+      const code = e.code ?? "unknown";
+      const message = e.message ?? String(e);
+      Alert.alert("Lỗi", `${message} (${code})`);
     } finally {
       setLoading(false);
     }
@@ -39,19 +35,8 @@ export default function ForgotPasswordScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Quên mật khẩu</Text>
-      <TextInput
-        placeholder="Email đăng ký"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-        style={styles.input}
-      />
-      <Button
-        title={loading ? "Đang gửi..." : "Gửi email khôi phục"}
-        onPress={onSend}
-        disabled={loading}
-      />
+      <TextInput placeholder="Email đăng ký" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} editable={!loading} />
+      <Button title={loading ? "Đang gửi..." : "Gửi email khôi phục"} onPress={onSend} disabled={loading} />
     </View>
   );
 }
@@ -59,11 +44,5 @@ export default function ForgotPasswordScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, justifyContent: "center" },
   title: { fontSize: 20, fontWeight: "bold", marginBottom: 16 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 16,
-  },
+  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 10, marginBottom: 16 },
 });

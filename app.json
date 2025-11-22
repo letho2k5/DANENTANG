@@ -8,17 +8,26 @@
     "scheme": "foodapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    
+    // ======================================
+    // ✅ SỬA LỖI: BỔ SUNG KHAI BÁO QUYỀN TRÊN iOS
+    // ======================================
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Cho phép ứng dụng truy cập thư viện ảnh để chọn ảnh cho đánh giá.",
+        "NSCameraUsageDescription": "Cho phép ứng dụng truy cập camera để chụp ảnh đánh giá.",
+        "NSPhotoLibraryAddUsageDescription": "Cho phép ứng dụng lưu ảnh từ camera vào thư viện."
+      }
     },
 
-     "extra": {
+    "extra": {
       "firebaseConfig": {
-        "apiKey": "AIzaSyD1lTp860WFStCO05NSXbFqE2R5BBWdYgw  ",
+        "apiKey": "AIzaSyD1lTp860WFStCO05NSXbFqE2R5BBWdYgw",
         "authDomain": "doancuoiky-bf19d.firebaseapp.com",
         "databaseURL": "https://doancuoiky-bf19d-default-rtdb.firebaseio.com",
         "projectId": "doancuoiky-bf19d",
-        "storageBucket": "doancuoiky-bf19d.firebasestorage.app",
+        "storageBucket": "doancuoiky-bf19d.appspot.com",
         "messagingSenderId": "440136984740",
         "appId": "1:440136984740:web:96b0246883f1a7ad785e31"
       },
@@ -28,6 +37,9 @@
       }
     },
     
+    // ======================================
+    // ✅ SỬA LỖI: BỔ SUNG KHAI BÁO QUYỀN TRÊN Android
+    // ======================================
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -36,8 +48,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA"
+      ]
     },
+    
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"

@@ -266,9 +266,9 @@ export default function AdminCategoriesScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Xoá danh mục</Text>
             <Text>
-              Bạn có chắc muốn xoá "
+              Bạn có chắc muốn xoá 
               {deleting?.data.name}
-              "?
+              ?
             </Text>
             <View style={styles.modalButtonsRow}>
               <Button title="Huỷ" onPress={() => setDeleting(null)} />

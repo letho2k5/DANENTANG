@@ -4,12 +4,12 @@ import { useRouter } from "expo-router";
 import { get, ref } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import type { UserProfile } from "../../models/UserProfile";
 import { auth, db } from "../../services/firebase";
