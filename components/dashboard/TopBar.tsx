@@ -3,10 +3,12 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-export function TopBar() {
+// THAY ĐỔI: Thêm prop onOpenSidebar
+export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   return (
     <View style={styles.container}>
-      <TouchableOpacity>
+      {/* THAY ĐỔI: Gắn hàm onOpenSidebar vào sự kiện onPress */}
+      <TouchableOpacity onPress={onOpenSidebar}>
         <Ionicons name="settings-outline" size={20} />
       </TouchableOpacity>
 

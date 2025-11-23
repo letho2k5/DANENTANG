@@ -1,11 +1,13 @@
-// app/admin/users.tsx
-import { onValue, ref, remove } from "firebase/database";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { onValue, ref, remove, update } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
+  ActionSheetIOS,
+  ActivityIndicator,
   Alert,
-  Button,
   FlatList,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,19 +16,25 @@ import {
 import type { AdminUser } from "../../models/AdminUser";
 import { db } from "../../services/firebase";
 
+type UserRoleFilter = "all" | "admin" | "user";
+
 export default function AdminUsersScreen() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
+  const [filter, setFilter] = useState<UserRoleFilter>("all");
+  // State mới để quản lý người dùng đang được xem chi tiết
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null); 
 
-  // Lấy danh sách user từ Firebase (giống UserScreen trong Kotlin)
+  /**
+   * Tải danh sách người dùng và áp dụng sắp xếp/lọc
+   */
   useEffect(() => {
     const usersRef = ref(db, "users");
 
     const unsub = onValue(
       usersRef,
       (snapshot) => {
-        const result: AdminUser[] = [];
+        let result: AdminUser[] = [];
         snapshot.forEach((child) => {
           const id = child.key ?? "";
           if (!id) return;
@@ -37,11 +45,14 @@ export default function AdminUsersScreen() {
           result.push({ id, email, role });
         });
 
-        // sort admin trước (role == "admin")
+        // Sắp xếp: Admin lên đầu, sau đó theo email
         result.sort((a, b) => {
           const aAdmin = a.role === "admin" ? 1 : 0;
           const bAdmin = b.role === "admin" ? 1 : 0;
-          return bAdmin - aAdmin;
+          if (bAdmin - aAdmin !== 0) {
+            return bAdmin - aAdmin;
+          }
+          return a.email.localeCompare(b.email);
         });
 
         setUsers(result);
@@ -49,7 +60,7 @@ export default function AdminUsersScreen() {
       },
       (error) => {
         console.log("Error loading users:", error);
-        Alert.alert("Lỗi", "Không tải được danh sách user");
+        Alert.alert("Lỗi", "Không tải được danh sách người dùng");
         setLoading(false);
       },
     );
@@ -57,90 +68,214 @@ export default function AdminUsersScreen() {
     return () => unsub();
   }, []);
 
-  async function handleDeleteUser() {
-    if (!userToDelete) return;
+  /**
+   * Lọc danh sách người dùng dựa trên trạng thái filter
+   */
+  const filteredUsers = users.filter((user) => {
+    if (filter === "all") return true;
+    return user.role === (filter === "admin" ? "admin" : "user");
+  });
+
+  /**
+   * Cập nhật vai trò (role) của người dùng
+   */
+  async function updateRole(user: AdminUser, newRole: "admin" | "user") {
     try {
-      await remove(ref(db, `users/${userToDelete.id}`));
-      Alert.alert("Thành công", `Đã xoá: ${userToDelete.email}`);
-      setUserToDelete(null);
+      await update(ref(db, `users/${user.id}`), { role: newRole });
+      Alert.alert(
+        "Thành công",
+        `Đã cập nhật vai trò của ${user.email} thành ${newRole.toUpperCase()}.`,
+      );
     } catch (e: any) {
       console.log(e);
-      Alert.alert("Lỗi", e.message ?? "Không xoá được user");
+      Alert.alert("Lỗi", e.message ?? "Không cập nhật được vai trò");
     }
   }
 
-  function renderUser(user: AdminUser) {
+  /**
+   * Xử lý xoá người dùng
+   */
+  async function handleDeleteUser(user: AdminUser) {
+    try {
+      await remove(ref(db, `users/${user.id}`));
+      Alert.alert("Thành công", `Đã xoá người dùng: ${user.email}`);
+    } catch (e: any) {
+      console.log(e);
+      Alert.alert("Lỗi", e.message ?? "Không xoá được người dùng");
+    }
+  }
+
+  /**
+   * Hiển thị ActionSheet (iOS) hoặc Alert (Android) cho các tùy chọn quản lý
+   */
+  function showUserActions(user: AdminUser) {
+    const isCurrentlyAdmin = user.role === "admin";
+    const toggleRoleText = isCurrentlyAdmin
+      ? "⬇️ Giáng cấp thành User"
+      : "⬆️ Thăng cấp thành Admin";
+    const newRole = isCurrentlyAdmin ? "user" : "admin";
+
+    // Thêm tùy chọn "Xem Chi tiết"
+    const options = [
+      "👁️ Xem Chi tiết", 
+      toggleRoleText,
+      `🗑️ Xoá ${user.email}`,
+      "Hủy",
+    ];
+
+    const destructiveButtonIndex = 2; // Nút Xoá
+    const cancelButtonIndex = 3; // Nút Hủy
+
+    const handleAction = (buttonIndex: number) => {
+      switch (buttonIndex) {
+        case 0:
+            // Xem Chi tiết
+            setSelectedUser(user);
+            break;
+        case 1:
+          // Thăng/Giáng cấp
+          updateRole(user, newRole);
+          break;
+        case 2:
+          // Xác nhận và Xoá
+          Alert.alert(
+            "Xác nhận xoá",
+            `Bạn có chắc chắn muốn xoá ${user.email}?`,
+            [
+              { text: "Hủy", style: "cancel" },
+              { text: "Xoá", style: "destructive", onPress: () => handleDeleteUser(user) },
+            ],
+          );
+          break;
+        case 3:
+          // Hủy
+          break;
+      }
+    };
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          destructiveButtonIndex,
+          cancelButtonIndex,
+          title: `Quản lý người dùng: ${user.email}`,
+        },
+        handleAction,
+      );
+    } else {
+      // Dùng Alert cho Android
+      Alert.alert(`Quản lý người dùng: ${user.email}`, "Chọn hành động:", [
+        { text: options[0], onPress: () => setSelectedUser(user) }, // Xem chi tiết
+        { text: options[1], onPress: () => updateRole(user, newRole) }, // Sửa vai trò
+        { text: options[2], style: 'destructive', onPress: () => handleAction(2) }, // Xoá
+        { text: options[3], style: 'cancel' }, // Hủy
+      ]);
+    }
+  }
+
+  /**
+   * Render từng mục người dùng
+   */
+  function renderUser({ item: user }: { item: AdminUser }) {
     const isAdmin = user.role === "admin";
+    const roleText = isAdmin ? "Admin" : "Người dùng thường";
+    const iconName = isAdmin ? "crown" : "account";
+    const textColor = isAdmin ? "white" : "black";
 
     return (
-      <View
-        style={[
-          styles.card,
-          isAdmin && styles.cardAdmin,
-        ]}
+      <TouchableOpacity
+        style={[styles.card, isAdmin && styles.cardAdmin]}
+        onPress={() => showUserActions(user)}
       >
-        <View>
-          <Text
-            style={[
-              styles.emailText,
-              isAdmin && styles.textOnAdmin,
-            ]}
-          >
-            Email: {user.email}
+        <MaterialCommunityIcons
+          name={iconName}
+          size={24}
+          color={textColor}
+          style={styles.icon}
+        />
+        
+        <View style={styles.userInfo}>
+          <Text style={[styles.emailText, { color: textColor }]}>
+            {user.email}
           </Text>
-          <Text
-            style={[
-              styles.roleText,
-              isAdmin && styles.textOnAdmin,
-            ]}
-          >
-            Quyền: {isAdmin ? "Admin" : "Người dùng thường"}
+          <Text style={[styles.roleText, { color: isAdmin ? 'white' : '#555' }]}>
+            Vai trò: **{roleText}**
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => setUserToDelete(user)}
-        >
-          <Text style={{ color: "white", fontWeight: "bold" }}>✖</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Nút hành động (More Options) */}
+        <MaterialCommunityIcons name="dots-vertical" size={24} color={textColor} />
+      </TouchableOpacity>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Quản lý người dùng</Text>
-
+      <Text style={styles.title}>👑 Bảng điều khiển Quản lý User</Text>
+      
+      {/* Bộ lọc vai trò */}
+      <View style={styles.filterContainer}>
+        <FilterButton
+          title="Tất cả"
+          value="all"
+          currentFilter={filter}
+          onPress={setFilter}
+        />
+        <FilterButton
+          title="Admin"
+          value="admin"
+          currentFilter={filter}
+          onPress={setFilter}
+        />
+        <FilterButton
+          title="Users"
+          value="user"
+          currentFilter={filter}
+          onPress={setFilter}
+        />
+      </View>
+      
       {loading ? (
-        <Text>Đang tải...</Text>
+        <ActivityIndicator size="large" color="#007AFF" style={styles.loading} />
       ) : (
         <FlatList
-          data={users}
+          data={filteredUsers}
           keyExtractor={(item) => item.id}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          renderItem={({ item }) => renderUser(item)}
-          contentContainerStyle={{ paddingVertical: 8 }}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          renderItem={renderUser}
+          contentContainerStyle={{ paddingVertical: 10 }}
+          ListEmptyComponent={() => (
+            <Text style={styles.emptyText}>Không tìm thấy người dùng nào phù hợp với bộ lọc.</Text>
+          )}
         />
       )}
 
-      {/* Modal xác nhận xoá */}
+      {/* Modal Xem Chi tiết Người dùng */}
       <Modal
-        visible={!!userToDelete}
-        transparent
+        visible={!!selectedUser}
+        transparent={true}
         animationType="fade"
-        onRequestClose={() => setUserToDelete(null)}
+        onRequestClose={() => setSelectedUser(null)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Xác nhận xoá</Text>
-            <Text style={{ marginBottom: 16 }}>
-              Bạn có muốn xoá người dùng {userToDelete?.email}?
-            </Text>
-            <View style={styles.modalButtonsRow}>
-              <Button title="Hủy" onPress={() => setUserToDelete(null)} />
-              <Button title="Xoá" color="#E53935" onPress={handleDeleteUser} />
-            </View>
+            <Text style={styles.modalTitle}>Chi tiết Người dùng</Text>
+
+            {selectedUser && (
+              <>
+                <InfoRow label="Email" value={selectedUser.email} />
+                <InfoRow label="Vai trò" value={selectedUser.role === 'admin' ? "Admin" : "User thường"} />
+                <InfoRow label="User ID" value={selectedUser.id} isId={true} />
+              </>
+            )}
+
+            <TouchableOpacity 
+              style={styles.modalCloseButton}
+              onPress={() => setSelectedUser(null)}
+            >
+              <Text style={styles.modalCloseText}>Đóng</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -148,51 +283,167 @@ export default function AdminUsersScreen() {
   );
 }
 
+// --- Component phụ ---
+
+interface FilterButtonProps {
+    title: string;
+    value: UserRoleFilter;
+    currentFilter: UserRoleFilter;
+    onPress: (filter: UserRoleFilter) => void;
+}
+
+const FilterButton: React.FC<FilterButtonProps> = ({ title, value, currentFilter, onPress }) => (
+    <TouchableOpacity
+        style={[
+            styles.filterButton,
+            currentFilter === value && styles.filterButtonActive,
+        ]}
+        onPress={() => onPress(value)}
+    >
+        <Text
+            style={[
+                styles.filterText,
+                currentFilter === value && styles.filterTextActive,
+            ]}
+        >
+            {title}
+        </Text>
+    </TouchableOpacity>
+);
+
+interface InfoRowProps {
+    label: string;
+    value: string;
+    isId?: boolean;
+}
+
+const InfoRow: React.FC<InfoRowProps> = ({ label, value, isId = false }) => (
+    <View style={styles.infoRow}>
+        <Text style={styles.infoLabel}>{label}:</Text>
+        <Text style={[styles.infoValue, isId && styles.infoId]}>{value}</Text>
+    </View>
+);
+
+
+// --- Stylesheet ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F5F5", padding: 16 },
-  title: { fontSize: 20, fontWeight: "bold", marginBottom: 12 },
+  container: { flex: 1, backgroundColor: "#F0F2F5", padding: 16 },
+  title: { fontSize: 22, fontWeight: "bold", marginBottom: 16, color: "#333" },
+  loading: { marginTop: 50 },
+
+  // Filter Styles
+  filterContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 20,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 4,
+  },
+  filterButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  filterButtonActive: {
+    backgroundColor: "#007AFF", // Màu xanh dương nổi bật
+  },
+  filterText: {
+    color: "#555",
+    fontWeight: "500",
+  },
+  filterTextActive: {
+    color: "white",
+    fontWeight: "600",
+  },
+
+  // Card Styles
   card: {
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 10,
     backgroundColor: "white",
-    elevation: 3,
     shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    elevation: 3,
     justifyContent: "space-between",
+    borderLeftWidth: 4,
+    borderLeftColor: "#CCC", 
   },
   cardAdmin: {
-    backgroundColor: "#4CAF50",
+    backgroundColor: "#2E7D32", 
+    borderLeftColor: "#1B5E20",
   },
-  emailText: { fontSize: 16, fontWeight: "500", color: "black" },
-  roleText: { fontSize: 14, color: "#555" },
-  textOnAdmin: { color: "white" },
-  deleteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#E53935",
-    alignItems: "center",
-    justifyContent: "center",
+  icon: {
+    marginRight: 12,
   },
+  userInfo: {
+    flex: 1,
+  },
+  emailText: { fontSize: 16, fontWeight: "600" },
+  roleText: { fontSize: 13, marginTop: 4 },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 20,
+    color: '#666',
+    fontSize: 16,
+  },
+  
+  // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: "#00000077",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
-    width: "85%",
-    backgroundColor: "white",
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: 'white',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
+    elevation: 10,
   },
-  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 8 },
-  modalButtonsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    paddingBottom: 10,
   },
+  infoRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  infoLabel: {
+    fontWeight: 'bold',
+    marginRight: 8,
+    color: '#333',
+    width: 80, // Cố định chiều rộng nhãn
+  },
+  infoValue: {
+    flexShrink: 1,
+    color: '#666',
+    fontWeight: '500',
+  },
+  infoId: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  modalCloseButton: {
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    color: 'white',
+    fontWeight: 'bold',
+  }
 });

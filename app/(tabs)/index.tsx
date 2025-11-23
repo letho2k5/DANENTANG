@@ -5,10 +5,12 @@ import { BannerCarousel } from "../../components/dashboard/BannerCarousel";
 import { CategorySection } from "../../components/dashboard/CategorySection";
 import { SearchBox } from "../../components/dashboard/SearchBox";
 import { TopBar } from "../../components/dashboard/TopBar";
+import { Sidebar } from "../../components/dashboard/Sidebar"; // IMPORT MỚI
 import { useMainViewModel } from "../../hooks/useMainViewModel";
 
 export default function HomeScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(false); // STATE MỚI: Quản lý hiển thị Sidebar
 
   const {
     banners,
@@ -18,25 +20,34 @@ export default function HomeScreen() {
   } = useMainViewModel({ categoryId: selectedCategoryId ?? "" });
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 16 }}>
-      <TopBar />
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+        {/* TRUYỀN HÀM MỞ SIDEBAR XUỐNG TOPBAR */}
+        <TopBar onOpenSidebar={() => setIsSidebarVisible(true)} />
 
-      {loadingBanner ? (
-        <View style={styles.center}>
-          <ActivityIndicator />
-        </View>
-      ) : (
-        <BannerCarousel banners={banners} />
-      )}
+        {loadingBanner ? (
+          <View style={styles.center}>
+            <ActivityIndicator />
+          </View>
+        ) : (
+          <BannerCarousel banners={banners} />
+        )}
 
-      <SearchBox />
+        <SearchBox />
 
-      <CategorySection
-        categories={categories}
-        loading={loadingCategory}
-        onSelectCategory={(cat) => setSelectedCategoryId(String(cat.id))}
+        <CategorySection
+          categories={categories}
+          loading={loadingCategory}
+          onSelectCategory={(cat) => setSelectedCategoryId(String(cat.id))}
+        />
+      </ScrollView>
+
+      {/* COMPONENT SIDEBAR MỚI */}
+      <Sidebar 
+        isVisible={isSidebarVisible} 
+        onClose={() => setIsSidebarVisible(false)} 
       />
-    </ScrollView>
+    </View>
   );
 }
 
