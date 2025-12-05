@@ -9,9 +9,11 @@ export interface Order {
   tax: number;
   deliveryFee: number;
   status: string; // "Wait Confirmed", "Shipping", "Received", ...
-  userId: string;
+  userId?: string;
   userName?: string | null;
   address: string;
   paymentMethod: string; // "Cash on Delivery" | "Bank Payment"
   bankPaymentInfo?: BankPaymentInfo | null;
+  // THÊM DÒNG NÀY – QUAN TRỌNG!
+  createdAt?: number; // thời gian tạo đơn hàng (timestamp)
 }

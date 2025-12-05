@@ -178,7 +178,7 @@ export default function AdminOrdersScreen() {
         <Text style={styles.headerTitle}>All Orders</Text>
         <Text
           style={styles.historyText}
-          onPress={() => router.push("/admin/order-history")}
+          onPress={() => router.push("/admin/orders-history")}
         >
           History
         </Text>

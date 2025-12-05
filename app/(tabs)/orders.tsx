@@ -4,16 +4,16 @@ import { useRouter } from "expo-router";
 import { onValue, ref, remove, set } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import type { Order } from "../../models/Order";
 import { auth, db } from "../../services/firebase";
@@ -122,7 +122,7 @@ export default function OrdersScreen() {
     <View style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Orders</Text>
-        <TouchableOpacity onPress={() => router.push("/orders/history")}>
+        <TouchableOpacity onPress={() => router.push("/history")}>
           <Text style={styles.historyText}>History</Text>
         </TouchableOpacity>
       </View>

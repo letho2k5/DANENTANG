@@ -316,19 +316,29 @@ export default function ProfileScreen() {
 
         {/* INFO SECTION */}
         <View style={styles.sectionContainer}>
-          {/* Tiêu đề mục */}
           <View style={styles.sectionTitleRow}>
             <Ionicons name="information-circle-outline" size={20} color={PRIMARY_COLOR} />
             <Text style={styles.sectionTitleText}>Thông tin cá nhân</Text>
           </View>
 
-          {/* Danh sách thông tin */}
           <InfoLine label="Số dư tài khoản" value={(profile?.balance ?? 0).toLocaleString("vi-VN") + " VND"} />
           <InfoLine label="Số điện thoại" value={profile?.phone} />
           <InfoLine label="Giới tính" value={profile?.gender} />
           <InfoLine label="Ngày sinh" value={profile?.birthDate} />
           <InfoLine label="Địa chỉ" value={profile?.address} />
         </View>
+
+        {/* NÚT CHUYỂN SANG LỊCH SỬ ĐƠN HÀNG - MỚI THÊM */}
+        <TouchableOpacity
+          style={styles.historyButton}
+          onPress={() => router.push("/history")}
+        >
+          <View style={styles.historyButtonContent}>
+            <Ionicons name="receipt-outline" size={22} color={PRIMARY_COLOR} />
+            <Text style={styles.historyButtonText}>Xem lịch sử đơn hàng</Text>
+            <Ionicons name="chevron-forward" size={22} color={TEXT_MUTED} />
+          </View>
+        </TouchableOpacity>
 
         {/* Trạng thái Uploading */}
         {uploading && (
@@ -340,7 +350,6 @@ export default function ProfileScreen() {
 
       </ScrollView>
 
-      {/* Modal full-screen image */}
       <FullScreenImageModal visible={modalVisible} imageUrl={currentZoomImage} onClose={() => setModalVisible(false)} />
     </>
   );
@@ -549,5 +558,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 5,
     elevation: 2,
+  },
+  
+  historyButton: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 18,
+    shadowColor: TEXT_DARK,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  historyButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  historyButtonText: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: TEXT_DARK,
+    flex: 1,
+    marginLeft: 12,
   },
 });

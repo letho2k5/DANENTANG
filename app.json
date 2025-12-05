@@ -31,11 +31,15 @@
         "messagingSenderId": "440136984740",
         "appId": "1:440136984740:web:96b0246883f1a7ad785e31"
       },
+
       "cloudinary": {
         "cloudName": "djrlah4ry",
         "uploadPreset": "foodapp_unsigned"
-      }
+      },
+      
+      "geminiApiKey": "AIzaSyA2S652h1XZxgEVFiICRjNnMhKjqVObGd0"
     },
+  
     
     // ======================================
     // ✅ SỬA LỖI: BỔ SUNG KHAI BÁO QUYỀN TRÊN Android
