@@ -427,14 +427,55 @@ export default function FoodDetailScreen() {
     };
 
 
-  if (loading || !food) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text>Đang tải...</Text>
-      </View>
-    );
-  }
+  // ==== TÍNH TRUNG BÌNH SỐ SAO TỪ REVIEW GỐC (KHÔNG TÍNH REPLY) ====
+const parentRatedReviews = reviews.filter(
+  (r) => !r.parentReviewId && r.rating > 0
+);
+
+const averageRating =
+  parentRatedReviews.length > 0
+    ? parseFloat(
+        (
+          parentRatedReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
+          parentRatedReviews.length
+        ).toFixed(1) // làm tròn 1 chữ số thập phân, ví dụ 4.3
+      )
+    : 0;
+
+
+    useEffect(() => {
+  // Nếu chưa có foodId thì thôi
+  if (!foodId) return;
+
+  // Không có review nào có rating > 0 thì không update
+  if (parentRatedReviews.length === 0) return;
+
+  const starRef = ref(db, `Foods/${foodId}/Star`);
+
+  set(starRef, averageRating)
+    .then(() => {
+      console.log("Updated Star in Foods:", averageRating);
+    })
+    .catch((err) => {
+      console.log("Update star error:", err);
+    });
+}, [averageRating, parentRatedReviews.length, foodId]);
+
+
+
+if (loading || !food) {
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" />
+      <Text>Đang tải...</Text>
+    </View>
+  );
+}
+
+
+
+
+
 
   const totalPrice = food.price * numberInCart;
   const reviewInputPlaceholder = replyingTo
@@ -483,7 +524,19 @@ export default function FoodDetailScreen() {
         <Text style={styles.title}>{food.title}</Text>
 
         {/* Row detail: time, star, calorie */}
-        <RowDetailRN food={food} />
+        {/* Row detail: time, star, calorie */}
+<RowDetailRN
+  food={{
+    ...food,
+    // Nếu có ít nhất 1 review có rating thì dùng averageRating,
+    // không thì giữ nguyên star từ DB
+    star:
+      parentRatedReviews.length > 0
+        ? averageRating
+        : food.star,
+  }}
+/>
+
 
         {/* Number row (+/-) + price */}
         <NumberRowRN

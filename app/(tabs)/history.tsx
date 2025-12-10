@@ -1,14 +1,16 @@
-// app/(tabs)/history.tsx – ĐỌC TỪ histories, HIỂN THỊ ĐÚNG 100%
+// app/(tabs)/history.tsx – LỊCH SỬ ĐƠN HÀNG SIÊU PRO + REALTIME
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { get, ref } from "firebase/database";
-import React, { useCallback, useEffect, useState } from "react";
+import { onValue, ref } from "firebase/database";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
+  Image,
   Modal,
+  SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -17,26 +19,43 @@ import {
 import type { Order } from "../../models/Order";
 import { auth, db } from "../../services/firebase";
 
+// Format thời gian đẹp như Grab
+const formatTime = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 60) return `${minutes} phút trước`;
+  if (hours < 24) return `${hours} giờ trước`;
+  if (days < 7) return `${days} ngày trước`;
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
 export default function HistoryScreen() {
   const router = useRouter();
   const userId = auth.currentUser?.uid ?? "";
-
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  const loadOrders = useCallback(async () => {
+  useEffect(() => {
     if (!userId) {
       setLoading(false);
       return;
     }
 
-    try {
-      // ĐỌC TỪ histories THAY VÌ orders
-      const snap = await get(ref(db, `users/${userId}/histories`));
+    const historyRef = ref(db, `users/${userId}/histories`);
+    const unsub = onValue(historyRef, (snapshot) => {
       const list: Order[] = [];
-
-      snap.forEach((child) => {
+      snapshot.forEach((child) => {
         const val = child.val();
         if (val) {
           list.push({
@@ -49,77 +68,94 @@ export default function HistoryScreen() {
             createdAt: val.createdAt || Date.now(),
             address: val.address || "",
             paymentMethod: val.paymentMethod || "Tiền mặt",
-            userName: val.userName || "",
-            bankPaymentInfo: val.bankPaymentInfo || null,
           });
         }
       });
 
       list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setOrders(list);
-    } catch (e) {
-      Alert.alert("Lỗi", "Không thể tải lịch sử đơn hàng");
-      console.error(e);
-    } finally {
       setLoading(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
-
-  const formatDate = (ts: number) =>
-    new Date(ts).toLocaleString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
 
+    return () => unsub();
+  }, [userId]);
+
   const renderOrder = ({ item }: { item: Order }) => {
+    const firstItem = item.items[0];
     const total = item.total + item.tax + item.deliveryFee;
-    const itemsText = item.items.map((i: any) => i.title).join(", ");
+    const itemCount = item.items.reduce((sum, i) => sum + (i.numberInCart || 1), 0);
 
     return (
       <TouchableOpacity
         style={styles.orderCard}
+        activeOpacity={0.95}
         onPress={() => setSelectedOrder(item)}
       >
-        <View style={styles.header}>
-          <Text style={styles.orderId}>#{item.id.slice(-8).toUpperCase()}</Text>
+        {/* Header */}
+        <View style={styles.cardHeader}>
+          <View>
+            <Text style={styles.orderId}>#{item.id.slice(-8).toUpperCase()}</Text>
+            <Text style={styles.orderTime}>{formatTime(item.createdAt || Date.now())}</Text>
+          </View>
           <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>Đã nhận hàng</Text>
+            <Ionicons name="checkmark-circle" size={20} color="white" />
+            <Text style={styles.statusText}>Đã nhận</Text>
           </View>
         </View>
-        <Text style={styles.date}>{formatDate(item.createdAt || Date.now())}</Text>
-        <Text style={styles.address}>Giao đến: {item.address || "—"}</Text>
-        <Text style={styles.items} numberOfLines={2}>
-          {itemsText || "Không có món"}
-        </Text>
-        <View style={styles.footer}>
-          <Text style={styles.total}>${total.toFixed(2)}</Text>
-          <Text style={styles.detailHint}>Bấm để xem chi tiết</Text>
+
+        {/* Body */}
+        <View style={styles.cardBody}>
+          {firstItem?.imagePath ? (
+            <Image source={{ uri: firstItem.imagePath }} style={styles.foodImage} />
+          ) : (
+            <View style={[styles.foodImage, styles.placeholderImage]} />
+          )}
+
+          <View style={styles.info}>
+            <Text style={styles.itemCount}>{itemCount} món</Text>
+            <Text style={styles.address} numberOfLines={1}>
+              {item.address || "Không có địa chỉ"}
+            </Text>
+            <Text style={styles.payment}>
+              {item.paymentMethod === "Cash on Delivery" ? "Tiền mặt" : "Chuyển khoản"}
+            </Text>
+          </View>
+
+          <View style={styles.priceBox}>
+            <Text style={styles.totalPrice}>${total.toFixed(2)}</Text>
+          </View>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.cardFooter}>
+          <Text style={styles.detailText}>Xem chi tiết</Text>
+          <Ionicons name="chevron-forward" size={20} color="#666" />
         </View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerBar}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+
+      {/* Header */}
+      <View style={styles.header}>
         <Text style={styles.title}>Lịch sử đơn hàng</Text>
+        <Text style={styles.subtitle}>Đã hoàn thành • Tự động cập nhật</Text>
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#00BCD4" style={{ marginTop: 60 }} />
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color="#00BCD4" />
+          <Text style={styles.loadingText}>Đang tải lịch sử...</Text>
+        </View>
       ) : orders.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="receipt-outline" size={80} color="#ddd" />
-          <Text style={styles.emptyText}>Chưa có đơn hàng nào trong lịch sử</Text>
-          <Text style={styles.emptySub}>
-            Các đơn đã nhận sẽ được chuyển vào đây
+          <Ionicons name="receipt-outline" size={90} color="#ddd" />
+          <Text style={styles.emptyTitle}>Chưa có đơn hàng nào</Text>
+          <Text style={styles.emptySubtitle}>
+            Đơn sẽ tự động xuất hiện khi bạn nhận hàng
           </Text>
         </View>
       ) : (
@@ -127,77 +163,93 @@ export default function HistoryScreen() {
           data={orders}
           keyExtractor={(item) => item.id}
           renderItem={renderOrder}
-          contentContainerStyle={{ padding: 16 }}
+          contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
       )}
 
+      {/* Modal chi tiết */}
       <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
-    </View>
+    </SafeAreaView>
   );
 }
 
-// Modal chi tiết đơn hàng – giữ nguyên đẹp như cũ
+// MODAL CHI TIẾT – SIÊU ĐẸP
 function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: () => void }) {
   if (!order) return null;
 
-  const total = Number(order.total || 0) + Number(order.tax || 0) + Number(order.deliveryFee || 10);
+  const total = order.total + order.tax + order.deliveryFee;
 
   return (
-    <Modal visible={!!order} transparent animationType="slide">
+    <Modal visible={true} transparent animationType="slide">
       <View style={styles.modalOverlay}>
-        <View style={styles.modalBox}>
+        <View style={styles.modalContainer}>
+          {/* Header */}
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              Đơn hàng #{order.id.slice(-8).toUpperCase()}
-            </Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={28} color="#333" />
+            <Text style={styles.modalTitle}>Chi tiết đơn hàng</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <Ionicons name="close" size={28} color="#666" />
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
-              <Text style={styles.info}>Mã đơn: #{order.id}</Text>
-              <Text style={styles.info}>
-                Ngày đặt: {new Date(order.createdAt || Date.now()).toLocaleString("vi-VN")}
-              </Text>
-              <Text style={styles.info}>Trạng thái: <Text style={{ color: "#4CAF50", fontWeight: "bold" }}>Đã nhận hàng</Text></Text>
-              <Text style={styles.info}>Địa chỉ: {order.address || "—"}</Text>
-              <Text style={styles.info}>Phương thức thanh toán: {order.paymentMethod}</Text>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Chi tiết thanh toán</Text>
-              <View style={styles.row}>
-                <Text>Tiền món</Text>
-                <Text>${Number(order.total || 0).toFixed(2)}</Text>
+            {/* Info */}
+            <View style={styles.infoSection}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Mã đơn</Text>
+                <Text style={styles.infoValue}>#{order.id}</Text>
               </View>
-              <View style={styles.row}>
-                <Text>Thuế</Text>
-                <Text>${Number(order.tax || 0).toFixed(2)}</Text>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Thời gian</Text>
+                <Text style={styles.infoValue}>
+                  {new Date(order.createdAt || Date.now()).toLocaleString("vi-VN")}
+                </Text>
               </View>
-              <View style={styles.row}>
-                <Text>Phí giao</Text>
-                <Text>${Number(order.deliveryFee || 10).toFixed(2)}</Text>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Trạng thái</Text>
+                <Text style={[styles.infoValue, styles.completedStatus]}>
+                  Đã nhận hàng
+                </Text>
               </View>
-              <View style={[styles.row, styles.totalRow]}>
-                <Text style={styles.totalLabel}>Tổng cộng</Text>
-                <Text style={styles.totalAmount}>${total.toFixed(2)}</Text>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Địa chỉ</Text>
+                <Text style={styles.infoValue}>{order.address || "—"}</Text>
               </View>
             </View>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Sản phẩm</Text>
+            {/* Items */}
+            <View style={styles.itemsSection}>
+              <Text style={styles.sectionTitle}>Sản phẩm đã đặt</Text>
               {order.items.map((item, idx) => (
-                <View key={idx} style={styles.itemCard}>
-                  <Text style={styles.itemName}>• {item.title || "Món ăn"}</Text>
-                  <Text style={styles.itemDetail}>
-                    {item.numberInCart || 1} × ${Number(item.price || 0).toFixed(2)}
+                <View key={idx} style={styles.itemRow}>
+                  <Text style={styles.itemName}>
+                    • {item.title} × {item.numberInCart || 1}
+                  </Text>
+                  <Text style={styles.itemPrice}>
+                    ${((item.price || 0) * (item.numberInCart || 1)).toFixed(2)}
                   </Text>
                 </View>
               ))}
+            </View>
+
+            {/* Total */}
+            <View style={styles.totalSection}>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Tiền món</Text>
+                <Text style={styles.totalValue}>${order.total.toFixed(2)}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Thuế</Text>
+                <Text style={styles.totalValue}>${order.tax.toFixed(2)}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Phí giao</Text>
+                <Text style={styles.totalValue}>${order.deliveryFee.toFixed(2)}</Text>
+              </View>
+              <View style={styles.finalTotalRow}>
+                <Text style={styles.finalTotalLabel}>Tổng cộng</Text>
+                <Text style={styles.finalTotalAmount}>${total.toFixed(2)}</Text>
+              </View>
             </View>
           </ScrollView>
         </View>
@@ -208,54 +260,160 @@ function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: ()
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8f9fa" },
-  headerBar: {
+  header: {
     backgroundColor: "white",
     paddingTop: 50,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderColor: "#eee",
-    alignItems: "center",
   },
-  title: { fontSize: 22, fontWeight: "bold", color: "#212121" },
+  title: { fontSize: 28, fontWeight: "bold", color: "#333" },
+  subtitle: { fontSize: 15, color: "#666", marginTop: 6 },
+  listContent: { padding: 16 },
 
+  // Card đơn hàng
   orderCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 14,
-    elevation: 5,
+    backgroundColor: "white",
+    borderRadius: 20,
+    marginBottom: 16,
+    elevation: 8,
     shadowColor: "#000",
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 12,
+    overflow: "hidden",
   },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  orderId: { fontSize: 17, fontWeight: "bold" },
-  statusBadge: { backgroundColor: "#4CAF50", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  statusText: { color: "white", fontSize: 13, fontWeight: "bold" },
-  date: { marginTop: 8, fontSize: 14, color: "#757575" },
-  address: { marginTop: 6, fontSize: 14, color: "#555", fontStyle: "italic" },
-  items: { marginTop: 10, fontSize: 15, color: "#444" },
-  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 16 },
-  total: { fontSize: 20, fontWeight: "bold", color: "#00BCD4" },
-  detailHint: { color: "#666", fontSize: 14, fontStyle: "italic" },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    backgroundColor: "#f0fff4",
+    borderBottomWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  orderId: { fontSize: 17, fontWeight: "bold", color: "#333" },
+  orderTime: { fontSize: 14, color: "#666" },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  statusText: { color: "white", fontWeight: "bold", marginLeft: 6, fontSize: 13 },
 
-  empty: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20 },
-  emptyText: { fontSize: 18, color: "#757575", marginTop: 16, textAlign: "center" },
-  emptySub: { fontSize: 15, color: "#757575", marginTop: 8, textAlign: "center" },
+  cardBody: {
+    flexDirection: "row",
+    padding: 16,
+  },
+  foodImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+  },
+  placeholderImage: {
+    backgroundColor: "#f0f0f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  info: {
+    flex: 1,
+    marginLeft: 16,
+    justifyContent: "center",
+  },
+  itemCount: { fontSize: 18, fontWeight: "bold", color: "#333" },
+  address: { fontSize: 14, color: "#666", marginTop: 4 },
+  payment: { fontSize: 14, color: "#10b981", fontWeight: "600", marginTop: 4 },
+  priceBox: {
+    justifyContent: "center",
+  },
+  totalPrice: { fontSize: 22, fontWeight: "bold", color: "#ef4444" },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  modalBox: { backgroundColor: "white", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "90%" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  modalTitle: { fontSize: 21, fontWeight: "bold", color: "#212121" },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12, color: "#00BCD4" },
-  info: { fontSize: 16, marginBottom: 8, color: "#333" },
-  row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  totalRow: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderColor: "#eee" },
-  totalLabel: { fontSize: 18, fontWeight: "bold" },
-  totalAmount: { fontSize: 21, fontWeight: "bold", color: "#00BCD4" },
-  itemCard: { marginLeft: 8, marginBottom: 12 },
-  itemName: { fontSize: 16, fontWeight: "600", color: "#212121" },
-  itemDetail: { fontSize: 15, color: "#757575", marginLeft: 12 },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    padding: 16,
+    backgroundColor: "#f9fafb",
+  },
+  detailText: { color: "#666", fontWeight: "600" },
+
+  // Empty state
+  empty: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 40,
+  },
+  emptyTitle: { fontSize: 20, fontWeight: "bold", color: "#999", marginTop: 20 },
+  emptySubtitle: { fontSize: 15, color: "#bbb", marginTop: 8, textAlign: "center" },
+
+  loading: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { marginTop: 16, fontSize: 16, color: "#666" },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "flex-end",
+  },
+  modalContainer: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "92%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+  modalTitle: { fontSize: 22, fontWeight: "bold" },
+  closeBtn: { padding: 8 },
+
+  infoSection: { padding: 20 },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  infoLabel: { fontSize: 16, color: "#666" },
+  infoValue: { fontSize: 16, fontWeight: "600", color: "#333" },
+  completedStatus: { color: "#10b981", fontWeight: "bold" },
+
+  itemsSection: { padding: 20, backgroundColor: "#f9fafb" },
+  sectionTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
+  itemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+  itemName: { fontSize: 16, color: "#333" },
+  itemPrice: { fontSize: 16, fontWeight: "600", color: "#ef4444" },
+
+  totalSection: { padding: 20 },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  totalLabel: { fontSize: 16, color: "#666" },
+  totalValue: { fontSize: 16, fontWeight: "600" },
+  finalTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderColor: "#eee",
+    marginTop: 8,
+  },
+  finalTotalLabel: { fontSize: 20, fontWeight: "bold" },
+  finalTotalAmount: { fontSize: 24, fontWeight: "bold", color: "#ef4444" },
 });

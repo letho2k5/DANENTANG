@@ -1,3 +1,6 @@
+// app/(auth)/register.tsx – ĐĂNG KÝ SIÊU ĐẸP, GIỮ NGUYÊN LOGIC HOÀN TOÀN
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import {
   createUserWithEmailAndPassword,
@@ -6,18 +9,19 @@ import {
 import { ref, set } from "firebase/database";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-// Import DateTimePicker
-import DateTimePicker from "@react-native-community/datetimepicker";
-// Giả định đường dẫn này là đúng cho cấu hình Firebase của bạn
 import { auth, db } from "../../services/firebase";
 
 export default function RegisterScreen() {
@@ -27,101 +31,69 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
-  // Sử dụng Date object cho ngày sinh
-  const [birthDate, setBirthDate] = useState(new Date(2000, 0, 1)); // Mặc định 01/01/2000
-  const [showDatePicker, setShowDatePicker] = useState(false); // Trạng thái ẩn/hiện DatePicker
+  const [birthDate, setBirthDate] = useState(new Date(2000, 0, 1));
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [gender, setGender] = useState<"Male" | "Female" | "Other">("Male");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Định dạng Date thành chuỗi dd/MM/yyyy
   const formattedBirthDate = birthDate.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   });
 
-  // Xử lý khi chọn ngày
   const onDateChange = (event: any, selectedDate?: Date) => {
     const currentDate = selectedDate || birthDate;
-    setShowDatePicker(Platform.OS === "ios"); // Ẩn DatePicker trên Android, giữ lại trên iOS
-    if (currentDate) {
-      setBirthDate(currentDate);
-    }
+    setShowDatePicker(Platform.OS === "ios");
+    if (currentDate) setBirthDate(currentDate);
   };
 
+  // GIỮ NGUYÊN TOÀN BỘ LOGIC VALIDATE CỦA BẠN
   function validate(): boolean {
-    if (
-      !fullName.trim() ||
-      !email.trim() ||
-      !phone.trim() ||
-      !address.trim() ||
-      !password ||
-      !confirmPassword
-    ) {
+    if (!fullName.trim() || !email.trim() || !phone.trim() || !address.trim() || !password || !confirmPassword) {
       Alert.alert("Lỗi", "Vui lòng điền đầy đủ tất cả thông tin");
       return false;
     }
-
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(email.trim())) {
       Alert.alert("Lỗi", "Email không hợp lệ");
       return false;
     }
-
     if (password !== confirmPassword) {
       Alert.alert("Lỗi", "Mật khẩu không khớp");
       return false;
     }
-
     if (password.length < 6) {
       Alert.alert("Lỗi", "Mật khẩu phải có ít nhất 6 ký tự");
       return false;
     }
-
-    // Kiểm tra số điện thoại (Tối thiểu 10 ký tự, chỉ chứa số)
     const phoneRegex = /^\d{10,}$/;
     if (!phoneRegex.test(phone.trim())) {
       Alert.alert("Lỗi", "Số điện thoại không hợp lệ hoặc quá ngắn (tối thiểu 10 chữ số)");
       return false;
     }
-
-    // Kiểm tra tuổi (ví dụ: tối thiểu 18 tuổi)
     const today = new Date();
-    const minAgeDate = new Date(
-      today.getFullYear() - 18,
-      today.getMonth(),
-      today.getDate()
-    );
+    const minAgeDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
     if (birthDate > minAgeDate) {
       Alert.alert("Lỗi", "Bạn phải đủ 18 tuổi để đăng ký");
       return false;
     }
-
     return true;
   }
 
+  // GIỮ NGUYÊN TOÀN BỘ LOGIC ĐĂNG KÝ
   async function handleRegisterConfirmed() {
     if (!validate()) return;
-
     try {
       setLoading(true);
-
-      // 1. Kiểm tra email đã dùng chưa
       const result = await fetchSignInMethodsForEmail(auth, email.trim());
       if (result.length > 0) {
         Alert.alert("Lỗi", "Email đã được sử dụng. Vui lòng chọn email khác.");
         return;
       }
-
-      // 2. Tạo tài khoản Firebase Auth
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
-
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const uid = cred.user.uid;
       const userProfile = {
         uid,
@@ -129,21 +101,14 @@ export default function RegisterScreen() {
         email: email.trim(),
         phone: phone.trim(),
         address: address.trim(),
-        // Lưu ngày sinh dưới dạng chuỗi đã định dạng
-        birthDate: formattedBirthDate, 
+        birthDate: formattedBirthDate,
         gender,
         balance: 1000000.0,
         role: "user",
       };
-
-      // 3. Lưu thông tin người dùng vào Realtime Database
       await set(ref(db, `users/${uid}`), userProfile);
-
       Alert.alert("Thành công", "Đăng ký thành công", [
-        {
-          text: "OK",
-          onPress: () => router.replace("/(auth)/login"),
-        },
+        { text: "OK", onPress: () => router.replace("/(auth)/login") },
       ]);
     } catch (e: any) {
       Alert.alert("Lỗi", e.message ?? "Đăng ký thất bại");
@@ -154,8 +119,6 @@ export default function RegisterScreen() {
 
   function onRegister() {
     if (!validate()) return;
-
-    // Hiển thị hộp thoại xác nhận
     Alert.alert(
       "Đồng ý chia sẻ dữ liệu",
       "Chúng tôi sẽ lưu trữ thông tin của bạn trên Firebase để cung cấp dịch vụ. Thông tin này có thể được sử dụng để cá nhân hóa trải nghiệm người dùng. Bạn có đồng ý không?",
@@ -167,289 +130,268 @@ export default function RegisterScreen() {
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      style={{ flex: 1, backgroundColor: "#F7F7F7" }}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.title}>Tạo Tài Khoản Mới 📝</Text>
-      <Text style={styles.subtitle}>
-        Vui lòng điền thông tin chi tiết của bạn.
-      </Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
-      {/* Tên đầy đủ */}
-      <TextInput
-        style={styles.input}
-        placeholder="Họ và Tên"
-        value={fullName}
-        onChangeText={setFullName}
-      />
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={28} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.title}>Tạo tài khoản mới</Text>
+            <View style={{ width: 28 }} />
+          </View>
 
-      {/* Email */}
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        onChangeText={setEmail}
-      />
+          {/* Logo */}
+          <View style={styles.logoContainer}>
+            <View style={styles.logo}>
+              <Text style={styles.logoText}>KN</Text>
+            </View>
+            <Text style={styles.appName}>KEBAB NGON</Text>
+            <Text style={styles.tagline}>Tham gia cộng đồng ngay hôm nay!</Text>
+          </View>
 
-      {/* Số điện thoại */}
-      <TextInput
-        style={styles.input}
-        placeholder="Số Điện Thoại"
-        value={phone}
-        keyboardType="numeric" // Thay đổi thành numeric cho logic hơn
-        onChangeText={setPhone}
-        maxLength={11} // Giới hạn ký tự
-      />
+          {/* Form */}
+          <View style={styles.form}>
 
-      {/* Địa chỉ */}
-      <TextInput
-        style={styles.input}
-        placeholder="Địa Chỉ"
-        value={address}
-        onChangeText={setAddress}
-      />
+            {/* Họ tên */}
+            <View style={styles.field}>
+              <Ionicons name="person-outline" size={24} color="#666" style={styles.icon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Họ và tên"
+                value={fullName}
+                onChangeText={setFullName}
+              />
+            </View>
 
-      {/* Chọn Ngày Sinh */}
-      <View style={styles.datePickerContainer}>
-        <Text style={styles.datePickerLabel}>Ngày Sinh:</Text>
-        <TouchableOpacity
-          style={styles.datePickerButton}
-          onPress={() => setShowDatePicker(true)}
-        >
-          <Text style={styles.datePickerText}>
-            {formattedBirthDate}
-          </Text>
-        </TouchableOpacity>
-      </View>
+            {/* Email */}
+            <View style={styles.field}>
+              <Ionicons name="mail-outline" size={24} color="#666" style={styles.icon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
 
-      {/* DatePicker Component */}
-      {showDatePicker && (
-        <DateTimePicker
-          value={birthDate}
-          mode="date"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={onDateChange}
-          maximumDate={new Date()} // Không cho chọn ngày trong tương lai
-        />
-      )}
+            {/* Số điện thoại */}
+            <View style={styles.field}>
+              <Ionicons name="call-outline" size={24} color="#666" style={styles.icon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Số điện thoại"
+                value={phone}
+                keyboardType="numeric"
+                maxLength={11}
+                onChangeText={setPhone}
+              />
+            </View>
 
-      {/* Giới Tính */}
-      <View style={styles.genderRow}>
-        <Text style={styles.genderTitle}>Giới Tính:</Text>
-        {["Male", "Female", "Other"].map((g) => (
-          <TouchableOpacity
-            key={g}
-            style={[
-              styles.genderButton,
-              gender === g && styles.genderButtonActive,
-            ]}
-            onPress={() => setGender(g as any)}
-          >
-            <Text
-              style={[
-                styles.genderText,
-                gender === g && styles.genderTextActive,
-              ]}
+            {/* Địa chỉ */}
+            <View style={styles.field}>
+              <Ionicons name="location-outline" size={24} color="#666" style={styles.icon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Địa chỉ"
+                value={address}
+                onChangeText={setAddress}
+              />
+            </View>
+
+            {/* Ngày sinh */}
+            <View style={styles.field}>
+              <Ionicons name="calendar-outline" size={24} color="#666" style={styles.icon} />
+              <TouchableOpacity style={styles.dateField} onPress={() => setShowDatePicker(true)}>
+                <Text style={styles.dateText}>{formattedBirthDate}</Text>
+                <Ionicons name="chevron-down" size={20} color="#666" />
+              </TouchableOpacity>
+            </View>
+            {showDatePicker && (
+              <DateTimePicker
+                value={birthDate}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={onDateChange}
+                maximumDate={new Date()}
+              />
+            )}
+
+            {/* Giới tính */}
+            <View style={styles.genderContainer}>
+              <Ionicons name="transgender-outline" size={24} color="#666" style={{ marginRight: 12 }} />
+              <View style={styles.genderRow}>
+                {[
+                  { value: "Male", label: "Nam" },
+                  { value: "Female", label: "Nữ" },
+                  { value: "Other", label: "Khác" },
+                ].map((g) => (
+                  <TouchableOpacity
+                    key={g.value}
+                    style={[styles.genderBtn, gender === g.value && styles.genderActive]}
+                    onPress={() => setGender(g.value as any)}
+                  >
+                    <Text style={[styles.genderText, gender === g.value && styles.genderTextActive]}>
+                      {g.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Mật khẩu */}
+            <View style={styles.field}>
+              <Ionicons name="lock-closed-outline" size={24} color="#666" style={styles.icon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Mật khẩu (ít nhất 6 ký tự)"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+            </View>
+
+            {/* Xác nhận mật khẩu */}
+            <View style={styles.field}>
+              <Ionicons name="lock-closed-outline" size={24} color="#666" style={styles.icon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Xác nhận mật khẩu"
+                secureTextEntry
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+              />
+            </View>
+
+            {/* Nút Đăng ký */}
+            <TouchableOpacity
+              style={[styles.registerBtn, loading && styles.registerBtnDisabled]}
+              onPress={onRegister}
+              disabled={loading}
             >
-              {g}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              {loading ? (
+                <ActivityIndicator color="white" size="small" />
+              ) : (
+                <Text style={styles.registerBtnText}>Đăng ký ngay</Text>
+              )}
+            </TouchableOpacity>
 
-      {/* Mật khẩu */}
-      <TextInput
-        style={styles.input}
-        placeholder="Mật Khẩu (ít nhất 6 ký tự)"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      {/* Xác nhận mật khẩu */}
-      <TextInput
-        style={styles.input}
-        placeholder="Xác Nhận Mật Khẩu"
-        secureTextEntry
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-      />
-
-      <View style={{ height: 24 }} />
-
-      {/* Nút Đăng Ký */}
-      <TouchableOpacity
-        style={[styles.registerButton, loading && styles.buttonDisabled]}
-        onPress={onRegister}
-        disabled={loading}
-      >
-        <Text style={styles.registerButtonText}>
-          {loading ? "Đang Đăng Ký..." : "Đăng Ký"}
-        </Text>
-      </TouchableOpacity>
-
-      <View style={{ height: 16 }} />
-
-      {/* Link đăng nhập */}
-      <TouchableOpacity onPress={() => router.replace("/(auth)/login")}>
-        <Text style={styles.loginLink}>
-          Đã có tài khoản? **Đăng nhập**
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+            {/* Đăng nhập */}
+            <TouchableOpacity style={styles.loginLinkContainer} onPress={() => router.replace("/(auth)/login")}>
+              <Text style={styles.loginText}>
+                Đã có tài khoản? <Text style={styles.loginHighlight}>Đăng nhập</Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-// --- Stylesheet Cải Tiến ---
-const PRIMARY_COLOR = "#1a73e8"; // Màu xanh lam hiện đại
-const BORDER_COLOR = "#dadce0"; // Màu viền nhẹ
-const BG_COLOR = "#F7F7F7"; // Màu nền xám nhạt
-
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: BG_COLOR,
-    flexGrow: 1,
-    alignItems: "stretch", // Căn chỉnh các phần tử theo chiều ngang
+  container: { flex: 1, backgroundColor: "#fff" },
+
+  // Header
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: "white",
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#333",
-    textAlign: "center",
-    marginBottom: 8,
+  title: { fontSize: 24, fontWeight: "bold", color: "#333" },
+
+  scroll: { paddingBottom: 40 },
+
+  // Logo
+  logoContainer: { alignItems: "center", marginVertical: 32 },
+  logo: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "#00BCD4",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    shadowColor: "#00BCD4",
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 15,
   },
-  subtitle: {
-    fontSize: 14,
-    color: "#777",
-    textAlign: "center",
-    marginBottom: 24,
+  logoText: { fontSize: 44, fontWeight: "bold", color: "white" },
+  appName: { fontSize: 34, fontWeight: "900", color: "#333" },
+  tagline: { fontSize: 17, color: "#666", marginTop: 8 },
+
+  form: { paddingHorizontal: 32 },
+
+  field: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+    borderRadius: 18,
+    paddingHorizontal: 20,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
   },
+  icon: { marginRight: 16 },
   input: {
-    width: "100%",
-    borderWidth: 1,
-    borderColor: BORDER_COLOR,
-    borderRadius: 10, // Bo góc mềm mại hơn
-    padding: 14,
-    marginBottom: 16,
-    backgroundColor: "white", // Nền trắng cho TextInput nổi bật
-    fontSize: 16,
-    // Đổ bóng nhẹ cho Android (elevation) và iOS (shadow)
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  // --- Date Picker Style ---
-  datePickerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    width: "100%",
-  },
-  datePickerLabel: {
-    fontSize: 16,
-    color: "#555",
-    marginRight: 10,
-    fontWeight: "600",
-  },
-  datePickerButton: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: BORDER_COLOR,
-    borderRadius: 10,
-    padding: 14,
-    backgroundColor: "white",
-    alignItems: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  datePickerText: {
-    fontSize: 16,
+    fontSize: 17,
+    paddingVertical: 18,
     color: "#333",
-    fontWeight: "600",
   },
-  // --- Gender Picker Style ---
-  genderRow: {
+
+  dateField: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 18,
+  },
+  dateText: { fontSize: 17, color: "#333" },
+
+  genderContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 24,
-    width: "100%",
   },
-  genderTitle: {
-    fontSize: 16,
-    color: "#555",
-    marginRight: 10,
-    fontWeight: "600",
-  },
-  genderButton: {
+  genderRow: { flexDirection: "row", flex: 1, justifyContent: "space-between" },
+  genderBtn: {
     flex: 1,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: BORDER_COLOR,
-    borderRadius: 10,
-    marginHorizontal: 4,
+    paddingVertical: 16,
+    borderRadius: 18,
+    backgroundColor: "#f0f0f0",
     alignItems: "center",
-    backgroundColor: "white",
+    marginHorizontal: 6,
   },
-  genderButtonActive: {
-    backgroundColor: PRIMARY_COLOR,
-    borderColor: PRIMARY_COLOR,
-  },
-  genderText: { color: "#333", fontWeight: "500" },
-  genderTextActive: { color: "white", fontWeight: "600" },
-  // --- Button Style ---
-  registerButton: {
-    backgroundColor: PRIMARY_COLOR,
-    padding: 15,
-    borderRadius: 10,
+  genderActive: { backgroundColor: "#00BCD4" },
+  genderText: { fontSize: 16, color: "#666" },
+  genderTextActive: { color: "white", fontWeight: "bold" },
+
+  registerBtn: {
+    backgroundColor: "#00BCD4",
+    paddingVertical: 20,
+    borderRadius: 18,
     alignItems: "center",
-    marginBottom: 10,
-    // Đổ bóng nổi bật
-    ...Platform.select({
-      ios: {
-        shadowColor: PRIMARY_COLOR,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 5,
-      },
-      android: {
-        elevation: 5,
-      },
-    }),
+    marginTop: 24,
+    shadowColor: "#00BCD4",
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 12,
   },
-  registerButtonText: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  buttonDisabled: {
-    backgroundColor: "#b3cde0", // Màu mờ khi bị vô hiệu hóa
-  },
-  loginLink: {
-    color: PRIMARY_COLOR,
-    fontWeight: "500",
-    fontSize: 16,
-    textAlign: "center",
-  },
-}); 
+  registerBtnDisabled: { opacity: 0.7 },
+  registerBtnText: { color: "white", fontSize: 18, fontWeight: "bold" },
+
+  loginLinkContainer: { alignItems: "center", marginTop: 24 },
+  loginText: { fontSize: 16, color: "#666" },
+  loginHighlight: { color: "#00BCD4", fontWeight: "bold" },
+});
