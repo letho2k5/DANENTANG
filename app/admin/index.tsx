@@ -1,6 +1,6 @@
-// app/admin/index.tsx – ADMIN DASHBOARD SIÊU PRO + DỮ LIỆU REALTIME
+// app/admin/index.tsx – ADMIN DASHBOARD CHUẨN DOANH NGHIỆP 2025
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Href, useRouter } from "expo-router"; // Dùng Href thay vì string
 import { onValue, ref } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
@@ -16,99 +16,119 @@ import {
 } from "react-native";
 import { auth, db } from "../../services/firebase";
 
+// Dùng Href để TypeScript hiểu chính xác các route có thật
 type MenuItem = {
   title: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
-  route: string;
-};
+  route: Href;
+}
 
+// Tất cả route đều hợp lệ và được TypeScript công nhận 100%
 const MENU_ITEMS: MenuItem[] = [
   { title: "Quản lý Danh mục", icon: "grid-outline", color: "#FF6B6B", route: "/admin/categories" },
   { title: "Quản lý Đơn hàng", icon: "receipt-outline", color: "#4ECDC4", route: "/admin/orders" },
   { title: "Doanh thu", icon: "trending-up-outline", color: "#45B649", route: "/admin/revenue" },
   { title: "Tài khoản người dùng", icon: "people-outline", color: "#5D5FEF", route: "/admin/users" },
-  { title: "Khuyến mãi", icon: "pricetag-outline", color: "#FFA502", route: "/admin/promotions" },
-  { title: "Cài đặt", icon: "settings-outline", color: "#8E8E93", route: "/admin/settings" },
+  // { title: "Khuyến mãi", icon: "pricetag-outline", color: "#FFA502", route: "/admin/promotions" },
+  // { title: "Cài đặt", icon: "settings-outline", color: "#8E8E93", route: "/admin/settings" },
 ];
 
 export default function AdminScreen() {
   const router = useRouter();
 
-  // Dữ liệu realtime
   const [todayOrders, setTodayOrders] = useState(0);
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [totalUsers, setTotalUsers] = useState(0);
   const [loadingStats, setLoadingStats] = useState(true);
 
-  // Lấy dữ liệu realtime
   useEffect(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTimestamp = today.getTime();
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startTimestamp = startOfDay.getTime();
 
-    let ordersCount = 0;
-    let revenueSum = 0;
+    let todayOrdersCount = 0;
+    let todayRevenueTotal = 0;
 
-    // 1. Lấy tất cả đơn hàng từ tất cả người dùng
     const usersRef = ref(db, "users");
+
     const unsubUsers = onValue(usersRef, (snapshot) => {
-      ordersCount = 0;
-      revenueSum = 0;
+      todayOrdersCount = 0;
+      todayRevenueTotal = 0;
 
       snapshot.forEach((userSnap) => {
         const ordersSnap = userSnap.child("orders");
-        ordersSnap.forEach((orderSnap) => {
+        const historiesSnap = userSnap.child("histories");
+
+        const processNode = (node: any) => {
+          node.forEach((orderSnap: any) => {
+            const order = orderSnap.val();
+            if (!order) return;
+
+            const orderTime = order.timestamp || order.createdAt || 0;
+            const total = (order.total || 0) + (order.tax || 0) + (order.deliveryFee || 0);
+
+            if (orderTime >= startTimestamp) {
+              todayOrdersCount++;
+            }
+          });
+        };
+
+        processNode(ordersSnap);
+        processNode(historiesSnap);
+
+        // Doanh thu chỉ tính từ đơn đã hoàn thành (histories)
+        historiesSnap.forEach((orderSnap: any) => {
           const order = orderSnap.val();
           if (!order) return;
-
-          const orderTime = order.timestamp || order.createdAt || 0;
+const orderTime = order.timestamp || order.createdAt || 0;
           const total = (order.total || 0) + (order.tax || 0) + (order.deliveryFee || 0);
 
-          // Chỉ tính đơn hôm nay
-          if (orderTime >= todayTimestamp) {
-            ordersCount++;
-            revenueSum += total;
+          if (orderTime >= startTimestamp) {
+            todayRevenueTotal += total;
           }
         });
-
-        // 2. Đếm tổng số khách hàng
-        const historiesSnap = userSnap.child("histories");
-        if (historiesSnap.exists()) {
-          setTotalUsers((prev) => prev + 1);
-        }
       });
 
-      setTodayOrders(ordersCount);
-      setTodayRevenue(revenueSum);
+      setTodayOrders(todayOrdersCount);
+      setTodayRevenue(todayRevenueTotal);
       setLoadingStats(false);
     });
 
-    // 3. Đếm tổng số users (cách chính xác hơn)
-    const totalUsersRef = ref(db, "users");
-    const unsubTotalUsers = onValue(totalUsersRef, (snap) => {
+    // Đếm tổng số người dùng
+    const unsubCount = onValue(ref(db, "users"), (snap) => {
       setTotalUsers(snap.size);
     });
 
     return () => {
       unsubUsers();
-      unsubTotalUsers();
+      unsubCount();
     };
   }, []);
 
   const handleLogout = () => {
-    Alert.alert("Đăng xuất", "Bạn có chắc muốn thoát?", [
+    Alert.alert("Đăng xuất", "Bạn có chắc muốn thoát không?", [
       { text: "Hủy", style: "cancel" },
       {
         text: "Thoát",
         style: "destructive",
         onPress: () => {
           auth.signOut();
-          router.replace("/(auth)/login");
+          router.replace("/(auth)/login" as Href);
         },
       },
     ]);
   };
+
+const formatCurrencyUSD = (amount: number): string => {
+  if (amount >= 1_000_000) {
+    return `$${(amount / 1_000_000).toFixed(1)}M`;
+  }
+  if (amount >= 1_000) {
+    return `$${Math.round(amount / 1_000)}K`;
+  }
+  return `$${amount.toLocaleString("en-US")}`;
+};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -126,7 +146,7 @@ export default function AdminScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Stats Cards - REALTIME */}
+        {/* Stats */}
         {loadingStats ? (
           <View style={styles.loadingStats}>
             <ActivityIndicator size="large" color="#00BCD4" />
@@ -142,9 +162,7 @@ export default function AdminScreen() {
 
             <View style={styles.statCard}>
               <Ionicons name="cash-outline" size={36} color="#45B649" />
-              <Text style={styles.statNumber}>
-                {(todayRevenue / 1000000).toFixed(1)}M
-              </Text>
+              <Text style={styles.statNumber}>{formatCurrencyUSD(todayRevenue)}</Text>
               <Text style={styles.statLabel}>Doanh thu hôm nay</Text>
             </View>
 
@@ -154,7 +172,7 @@ export default function AdminScreen() {
               <Text style={styles.statLabel}>Tổng khách hàng</Text>
             </View>
           </View>
-        )}
+)}
 
         {/* Banner */}
         <View style={styles.banner}>
@@ -167,14 +185,14 @@ export default function AdminScreen() {
           </View>
         </View>
 
-        {/* Menu */}
+        {/* Menu Grid */}
         <Text style={styles.sectionTitle}>Quản lý hệ thống</Text>
         <View style={styles.grid}>
           {MENU_ITEMS.map((item, index) => (
             <TouchableOpacity
               key={index}
               style={[styles.menuCard, { borderLeftColor: item.color }]}
-              onPress={() => router.push(item.route)}
+              onPress={() => router.push(item.route)} // Type-safe 100%
               activeOpacity={0.8}
             >
               <View style={[styles.iconCircle, { backgroundColor: item.color + "20" }]}>
@@ -231,12 +249,18 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   statNumber: {
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: "bold",
     color: "#333",
     marginTop: 12,
   },
-  statLabel: { fontSize: 14, color: "#666", marginTop: 6, fontWeight: "600" },
+ statLabel: {
+  fontSize: 12,
+  color: "#666",
+  marginTop: 8,
+  fontWeight: "600",
+  textAlign: "center",       
+},
 
   banner: {
     margin: 16,
@@ -254,13 +278,13 @@ const styles = StyleSheet.create({
   bannerSubtitle: { fontSize: 16, color: "#2D3436", marginTop: 6 },
   bannerImage: {
     width: 90,
-    height: 90,
+height: 90,
     backgroundColor: "#FFD93D",
     borderRadius: 45,
     justifyContent: "center",
     alignItems: "center",
   },
-  pizzaEmoji: { fontSize: 40 },
+  pizzaEmoji: { fontSize: 20 },
 
   sectionTitle: {
     fontSize: 22,

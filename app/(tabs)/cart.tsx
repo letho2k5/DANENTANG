@@ -1,5 +1,6 @@
 // app/(tabs)/cart.tsx – ĐÃ HOÀN CHỈNH 100% (XÓA + TĂNG/GIẢM THEO ID)
 
+import { sendThankYouEmail } from "@/services/sendThankYouEmail";
 import { useRouter } from "expo-router";
 import { get, push, ref, set, update } from "firebase/database";
 import React, { useEffect, useState } from "react";
@@ -188,6 +189,7 @@ export default function CartScreen() {
   }
 
   // Đặt hàng
+    // Đặt hàng
   async function createOrder() {
     if (!userId) return;
 
@@ -220,7 +222,28 @@ export default function CartScreen() {
         createdAt: Date.now(),
       });
 
-      Alert.alert("Thành công!", "Đơn hàng đã được đặt", [{ text: "OK", onPress: () => router.back() }]);
+      // GỬI MAIL CẢM ƠN NGAY LẬP TỨC KHI ĐẶT HÀNG XONG
+      sendThankYouEmail(
+        user?.email || "fallback@gmail.com",
+        fullName,
+        {
+          id: newOrderRef.key!,
+          items: selectedList,
+          total: selectedTotal,
+          tax,
+          deliveryFee: DELIVERY_FEE,
+          address,
+          paymentMethod,
+        }
+      )
+        .then(() => console.log("Gửi mail cảm ơn thành công ngay khi đặt hàng!"))
+        .catch((e) => console.error("Lỗi gửi mail:", e));
+
+      Alert.alert(
+        "Đặt hàng thành công!",
+        "Cảm ơn bạn đã tin tưởng! Chúng tôi đã gửi email xác nhận đến bạn rồi nhé!",
+        [{ text: "OK", onPress: () => router.back() }]
+      );
     } catch (e: any) {
       Alert.alert("Lỗi", e.message || "Không thể đặt hàng");
     } finally {

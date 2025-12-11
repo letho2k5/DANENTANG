@@ -8,19 +8,16 @@
     "scheme": "foodapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    
-    // ======================================
-    // ✅ SỬA LỖI: BỔ SUNG KHAI BÁO QUYỀN TRÊN iOS
-    // ======================================
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Cho phép ứng dụng truy cập thư viện ảnh để chọn ảnh cho đánh giá.",
         "NSCameraUsageDescription": "Cho phép ứng dụng truy cập camera để chụp ảnh đánh giá.",
-        "NSPhotoLibraryAddUsageDescription": "Cho phép ứng dụng lưu ảnh từ camera vào thư viện."
-      }
+        "NSPhotoLibraryAddUsageDescription": "Cho phép ứng dụng lưu ảnh từ camera vào thư viện.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.kebabngon.app"
     },
-
     "extra": {
       "firebaseConfig": {
         "apiKey": "AIzaSyD1lTp860WFStCO05NSXbFqE2R5BBWdYgw",
@@ -31,19 +28,16 @@
         "messagingSenderId": "440136984740",
         "appId": "1:440136984740:web:96b0246883f1a7ad785e31"
       },
-
       "cloudinary": {
         "cloudName": "djrlah4ry",
         "uploadPreset": "foodapp_unsigned"
       },
-      
-      "geminiApiKey": "AIzaSyA2S652h1XZxgEVFiICRjNnMhKjqVObGd0"
+      "geminiApiKey": "AIzaSyA2S652h1XZxgEVFiICRjNnMhKjqVObGd0",
+      "router": {},
+      "eas": {
+        "projectId": "241fd49f-b149-4e79-a9b1-85edcf3bd2f0"
+      }
     },
-  
-    
-    // ======================================
-    // ✅ SỬA LỖI: BỔ SUNG KHAI BÁO QUYỀN TRÊN Android
-    // ======================================
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -57,9 +51,9 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "CAMERA"
-      ]
+      ],
+      "package": "com.kebabngon.app"
     },
-    
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"

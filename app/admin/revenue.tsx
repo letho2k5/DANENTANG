@@ -1,10 +1,10 @@
-// app/admin/revenue.tsx
+// app/admin/revenue.tsx – BÁO CÁO DOANH THU CHUẨN DOANH NGHIỆP 2025
 import { format, subDays } from "date-fns";
 import { onValue, ref } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,6 +26,38 @@ export default function RevenueScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Khởi tạo dữ liệu mặc định (chỉ chạy 1 lần khi mount)
+    const initDaily = () => {
+      const arr: RevenueItem[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = subDays(new Date(), i);
+        arr.push({
+          label: format(d, "EEE, dd/MM"),
+          revenue: 0,
+          dateKey: format(d, "yyyy-MM-dd"),
+        });
+      }
+      return arr;
+    };
+
+    const initMonthly = () => {
+      const arr: RevenueItem[] = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        arr.push({
+          label: format(d, "MMMM yyyy"),
+          revenue: 0,
+          dateKey: format(d, "yyyy-MM"),
+        });
+      }
+      return arr;
+    };
+
+    setDailyData(initDaily());
+    setMonthlyData(initMonthly());
+    setLoading(true); // Bắt đầu loading
+
     const usersRef = ref(db, "users");
 
     const unsub = onValue(usersRef, (snapshot) => {
@@ -40,14 +72,13 @@ export default function RevenueScreen() {
           const order = orderSnap.val();
           if (!order || order.status !== "Received") return;
 
-          const revenue = Number(order.total ?? 0) + Number(order.tax ?? 0) + Number(order.deliveryFee ?? 0);
+          const revenue = Number(order.total || 0) + Number(order.tax || 0) + Number(order.deliveryFee || 0);
           if (revenue <= 0) return;
 
           let orderTime = Date.now();
           if (order.createdAt) {
-            if (typeof order.createdAt === "string") orderTime = new Date(order.createdAt).getTime();
-            else if (order.createdAt?.toMillis) orderTime = order.createdAt.toMillis();
-            else if (typeof order.createdAt === "number") orderTime = order.createdAt;
+            if (typeof order.createdAt === "number") orderTime = order.createdAt;
+            else if (typeof order.createdAt === "string") orderTime = new Date(order.createdAt).getTime();
           }
 
           const date = new Date(orderTime);
@@ -56,10 +87,12 @@ export default function RevenueScreen() {
           const dateKey = format(date, "yyyy-MM-dd");
           const monthKey = format(date, "yyyy-MM");
 
+          // 7 ngày gần nhất
           if (date >= subDays(new Date(), 6)) {
             dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + revenue);
           }
 
+          // 12 tháng gần nhất
           const oneYearAgo = new Date();
           oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
           if (date >= oneYearAgo) {
@@ -68,16 +101,15 @@ export default function RevenueScreen() {
         });
       });
 
-      const createData = (count: number, isDaily: boolean): RevenueItem[] => {
+      // Tạo dữ liệu thực tế
+      const createDailyData = () => {
         const result: RevenueItem[] = [];
-        for (let i = count - 1; i >= 0; i--) {
-          const date = isDaily ? subDays(new Date(), i) : new Date();
-          if (!isDaily) date.setMonth(date.getMonth() - i);
-          const key = isDaily ? format(date, "yyyy-MM-dd") : format(date, "yyyy-MM");
-          const map = isDaily ? dailyMap : monthlyMap;
-          const revenue = Number((map.get(key) || 0).toFixed(2));
+        for (let i = 6; i >= 0; i--) {
+          const date = subDays(new Date(), i);
+          const key = format(date, "yyyy-MM-dd");
+          const revenue = Number((dailyMap.get(key) || 0));
           result.push({
-            label: isDaily ? format(date, "EEEE, dd/MM") : format(date, "MMMM yyyy"),
+            label: format(date, "EEE, dd/MM"),
             revenue,
             dateKey: key,
           });
@@ -85,45 +117,38 @@ export default function RevenueScreen() {
         return result;
       };
 
-      setDailyData(createData(7, true));
-      setMonthlyData(createData(12, false));
-      setLoading(false);
+      const createMonthlyData = () => {
+        const result: RevenueItem[] = [];
+        for (let i = 11; i >= 0; i--) {
+          const date = new Date();
+          date.setMonth(date.getMonth() - i);
+          const key = format(date, "yyyy-MM");
+          const revenue = Number((monthlyMap.get(key) || 0));
+          result.push({
+            label: format(date, "MMMM yyyy"),
+            revenue,
+            dateKey: key,
+          });
+        }
+        return result;
+      };
+
+      setDailyData(createDailyData());
+      setMonthlyData(createMonthlyData());
+      setLoading(false); // Tắt loading khi xong
     });
 
-    // Dữ liệu mặc định
-    const init = (count: number, daily: boolean) => {
-      const arr: RevenueItem[] = [];
-      for (let i = count - 1; i >= 0; i--) {
-        const d = daily ? subDays(new Date(), i) : new Date();
-        if (!daily) d.setMonth(d.getMonth() - i);
-        arr.push({
-          label: daily ? format(d, "EEEE, dd/MM") : format(d, "MMMM yyyy"),
-          revenue: 0,
-          dateKey: "",
-        });
-      }
-      return arr;
-    };
-
-    setDailyData(init(7, true));
-    setMonthlyData(init(12, false));
-    setLoading(true);
-
     return () => unsub();
-  }, []);
+  }, []); // Chỉ chạy 1 lần khi mount
 
   const data = viewMode === "daily" ? dailyData : monthlyData;
-  const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0).toFixed(2);
-  const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
+  const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
 
-  if (loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Đang tải doanh thu...</Text>
-      </View>
-    );
-  }
+  const formatCurrency = (amount: number) => {
+    if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)}M ₫`;
+    if (amount >= 1000) return `${Math.round(amount / 1000)}K ₫`;
+    return `${amount.toLocaleString("vi-VN")} ₫`;
+  };
 
   const renderItem = ({ item }: { item: RevenueItem }) => {
     const isToday = item.dateKey === format(new Date(), "yyyy-MM-dd");
@@ -141,53 +166,65 @@ export default function RevenueScreen() {
             </View>
           )}
         </View>
-        <Text style={styles.itemRevenue}>${item.revenue.toLocaleString()}</Text>
+        <Text style={styles.itemRevenue}>{formatCurrency(item.revenue)}</Text>
       </View>
     );
   };
 
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+        <Text style={styles.loadingText}>Đang tải báo cáo doanh thu...</Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>Báo cáo doanh thu</Text>
-
-      <Text style={styles.subtitle}>
-        Chỉ tính đơn hàng đã hoàn tất (Đã nhận hàng)
-      </Text>
-
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryLabel}>
-          Tổng doanh thu {viewMode === "daily" ? "7 ngày gần nhất" : "12 tháng gần đây"}
-        </Text>
-        <Text style={styles.summaryAmount}>${totalRevenue}</Text>
-      </View>
-
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, viewMode === "daily" && styles.tabActive]}
-          onPress={() => setViewMode("daily")}
-        >
-          <Text style={[styles.tabText, viewMode === "daily" && styles.tabTextActive]}>
-            7 ngày gần nhất
+    <SafeAreaView style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Báo cáo doanh thu</Text>
+          <Text style={styles.subtitle}>
+            Chỉ tính đơn hàng đã hoàn tất (Đã nhận hàng)
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, viewMode === "monthly" && styles.tabActive]}
-          onPress={() => setViewMode("monthly")}
-        >
-          <Text style={[styles.tabText, viewMode === "monthly" && styles.tabTextActive]}>
-            12 tháng gần đây
-          </Text>
-        </TouchableOpacity>
-      </View>
+        </View>
 
-      <FlatList
-        data={data}
-        keyExtractor={(item) => item.dateKey || item.label}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-      />
-    </ScrollView>
+        {/* Tổng doanh thu */}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>
+            Tổng doanh thu {viewMode === "daily" ? "7 ngày gần nhất" : "12 tháng gần đây"}
+          </Text>
+          <Text style={styles.summaryAmount}>{formatCurrency(totalRevenue)}</Text>
+        </View>
+
+        {/* Tab */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, viewMode === "daily" && styles.tabActive]}
+            onPress={() => setViewMode("daily")}
+          >
+            <Text style={[styles.tabText, viewMode === "daily" && styles.tabTextActive]}>
+              7 ngày gần nhất
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, viewMode === "monthly" && styles.tabActive]}
+            onPress={() => setViewMode("monthly")}
+          >
+            <Text style={[styles.tabText, viewMode === "monthly" && styles.tabTextActive]}>
+              12 tháng gần đây
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Danh sách */}
+        {data.map((item, index) => (
+          <View key={index}>{renderItem({ item })}</View>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -196,8 +233,9 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f8f9fa" },
   loadingText: { marginTop: 20, fontSize: 18, color: "#666" },
 
-  title: { fontSize: 32, fontWeight: "bold", textAlign: "center", color: "#2c3e50", marginTop: 20, marginBottom: 8 },
-  subtitle: { fontSize: 15, color: "#666", textAlign: "center", marginBottom: 32, fontStyle: "italic" },
+  header: { padding: 20, alignItems: "center" },
+  title: { fontSize: 32, fontWeight: "bold", color: "#2c3e50", marginBottom: 8 },
+  subtitle: { fontSize: 15, color: "#666", textAlign: "center", fontStyle: "italic" },
 
   summaryCard: {
     backgroundColor: "#4CAF50",
@@ -213,7 +251,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
   },
   summaryLabel: { fontSize: 18, color: "#e8f5e9", marginBottom: 12, fontWeight: "600" },
-  summaryAmount: { fontSize: 52, fontWeight: "bold", color: "white" },
+  summaryAmount: { fontSize: 48, fontWeight: "bold", color: "white" },
 
   tabContainer: {
     flexDirection: "row",

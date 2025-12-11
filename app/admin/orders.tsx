@@ -1,6 +1,6 @@
-// app/admin/orders.tsx
+// app/admin/orders.tsx - ĐÃ SỬA 100% LỖI TYPESCRIPT + CHUẨN FLOW
 import { useRouter } from "expo-router";
-import { onValue, ref, remove, update } from "firebase/database";
+import { onValue, ref, update } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,7 +18,16 @@ import type { Food } from "../../models/Food";
 import type { Order } from "../../models/Order";
 import { db } from "../../services/firebase";
 
-const FILTERS = ["", "Wait Confirmed", "Shipping", "Received"] as const;
+// Các tab lọc
+const FILTERS = ["", "Wait Confirmed", "Shipping", "Delivered", "Received"] as const;
+
+// Tên hiển thị đẹp cho admin
+const DISPLAY_STATUS: Record<string, string> = {
+  "Wait Confirmed": "Chờ xác nhận",
+  Shipping: "Đang giao",
+  Delivered: "Đã giao (chờ xác nhận)",
+  Received: "Khách đã nhận",
+};
 
 export default function AdminOrdersScreen() {
   const router = useRouter();
@@ -73,25 +82,23 @@ export default function AdminOrdersScreen() {
               deliveryFee: Number(data.deliveryFee ?? 0),
               address: data.address || "Chưa có địa chỉ",
               paymentMethod: data.paymentMethod || "Cash on Delivery",
-              bankPaymentInfo: data.bankPaymentInfo || null,
               createdAt: data.createdAt,
-
-            items: rawItems.map((it: any): Food => ({
-              id: it.id || it.Id || Date.now(),
-              title: it.Title || it.title || "Món ăn",
-              price: Number(it.Price || it.price || 0),
-              imagePath: it.ImagePath || it.imagePath || "",
-              numberInCart: Number(it.numberInCart || 1),
-              description: it.description || it.Description || "",
-              categoryId: it.categoryId || it.CategoryId || "",
-              bestFood: !!it.bestFood || !!it.BestFood || false,
-              locationId: Number(it.locationId || it.LocationId || 0),
-              priceId: Number(it.priceId || it.PriceId || 0),
-              timeId: Number(it.timeId || it.TimeId || 0),
-              calorie: Number(it.calorie || it.Calorie || 0),
-              star: Number(it.star || it.Star || 0),
-              timeValue: Number(it.timeValue || it.TimeValue || 0),
-            })),
+              items: rawItems.map((it: any): Food => ({
+                id: it.id || it.Id || Date.now().toString(),
+                title: it.title || it.Title || "Món ăn",
+                price: Number(it.price || it.Price || 0),
+                imagePath: it.imagePath || it.ImagePath || "",
+                numberInCart: Number(it.numberInCart || 1),
+                description: it.description || it.Description || "",
+                categoryId: it.categoryId || it.CategoryId || "",
+                bestFood: !!it.bestFood || !!it.BestFood || false,
+                locationId: Number(it.locationId || it.LocationId || 0),
+                priceId: Number(it.priceId || it.PriceId || 0),
+                timeId: Number(it.timeId || it.TimeId || 0),
+                calorie: Number(it.calorie || it.Calorie || 0),
+                star: Number(it.star || it.Star || 0),
+                timeValue: Number(it.timeValue || it.TimeValue || 0),
+              })),
             };
 
             (order as any).__sortTime = sortTime;
@@ -104,7 +111,7 @@ export default function AdminOrdersScreen() {
         setLoading(false);
       },
       (error) => {
-        console.error("Lỗi tải đơn hàng:", error);
+        console.error(error);
         Alert.alert("Lỗi", "Không thể tải đơn hàng");
         setLoading(false);
       }
@@ -120,8 +127,7 @@ export default function AdminOrdersScreen() {
       if (typeof createdAt === "string") time = new Date(createdAt).getTime();
       else if (createdAt?.toMillis) time = createdAt.toMillis();
       else if (typeof createdAt === "number") time = createdAt;
-      else return "Lỗi định dạng";
-      if (isNaN(time)) return "Thời gian lỗi";
+      else return "Lỗi";
       return new Date(time).toLocaleString("vi-VN", {
         day: "2-digit",
         month: "2-digit",
@@ -134,33 +140,37 @@ export default function AdminOrdersScreen() {
     }
   };
 
-  const getNextStatus = (status: string): string | null => {
-    if (status === "Wait Confirmed") return "Shipping";
-    if (status === "Shipping") return "Received";
-    if (status === "Received") return "Completed";
-    return null;
+
+  const getNextStatus = (current: string): string | null => {
+    if (current === "Wait Confirmed") return "Shipping";
+    if (current === "Shipping") return "Delivered";
+    return null; // Dừng lại, chờ khách xác nhận
+
   };
 
   const handleAdvanceStatus = async (order: Order) => {
-    const next = getNextStatus(order.status);
-    if (!next) {
-      Alert.alert("Thông báo", "Đơn hàng đã hoàn tất");
+    const nextStatus = getNextStatus(order.status);
+    if (!nextStatus) {
+      Alert.alert(
+        "Thông báo",
+        order.status === "Delivered"
+          ? "Đơn đã giao, đang chờ khách xác nhận hàng"
+          : "Không thể chuyển tiếp trạng thái"
+      );
       return;
     }
 
     setUpdating(true);
     try {
       const orderRef = ref(db, `users/${order.userId}/orders/${order.id}`);
-      if (next === "Completed") {
-        await remove(orderRef);
-        setOrders((prev) => prev.filter((o) => o.id !== order.id));
-        Alert.alert("Thành công", "Đơn hàng đã được chuyển vào lịch sử!");
-      } else {
-        await update(orderRef, { status: next });
-        setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: next } : o)));
-        Alert.alert("Thành công", `Cập nhật trạng thái → ${next}`);
-      }
-    } catch (e: any) {
+      await update(orderRef, { status: nextStatus });
+
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o))
+      );
+
+      Alert.alert("Thành công", `Đã chuyển sang: ${nextStatus}`);
+    } catch {
       Alert.alert("Lỗi", "Không thể cập nhật trạng thái");
     } finally {
       setUpdating(false);
@@ -169,30 +179,31 @@ export default function AdminOrdersScreen() {
 
   const renderOrderCard = ({ item }: { item: Order }) => {
     const firstItem = item.items[0];
+    const canAdvance = ["Wait Confirmed", "Shipping"].includes(item.status);
+
     const statusColor =
       item.status === "Wait Confirmed" ? "#2196F3" :
       item.status === "Shipping" ? "#FF9800" :
-      item.status === "Received" ? "#F44336" : "#9E9E9E";
+      item.status === "Delivered" ? "#9C27B0" :
+      item.status === "Received" ? "#4CAF50" :
+      "#95A5A6";
 
-    const statusText =
-      item.status === "Wait Confirmed" ? "Xác nhận" :
-      item.status === "Shipping" ? "Đang giao" :
-      item.status === "Received" ? "Hoàn tất" : "Cập nhật";
+    const statusText = DISPLAY_STATUS[item.status] || item.status;
 
     return (
       <TouchableOpacity style={styles.card} onPress={() => setSelectedOrder(item)}>
         <View style={styles.cardRow}>
           {firstItem?.imagePath ? (
-            <Image source={{ uri: firstItem.imagePath }} style={styles.cardImage} resizeMode="cover" />
+            <Image source={{ uri: firstItem.imagePath }} style={styles.cardImage} />
           ) : (
             <View style={[styles.cardImage, styles.placeholderImage]} />
           )}
 
           <View style={styles.cardInfo}>
             <Text style={styles.cardTitle}>#{item.id.slice(-6)} • {item.items.length} món</Text>
-            <Text style={styles.cardDate}>Đặt lúc: {formatTime(item.createdAt)}</Text>
+            <Text style={styles.cardDate}>Đặt: {formatTime(item.createdAt)}</Text>
             <Text style={styles.cardText}>Khách: {item.userName}</Text>
-            <Text style={styles.cardText}>Trạng thái: {item.status}</Text>
+            <Text style={styles.cardText}>Trạng thái: {statusText}</Text>
             <Text style={styles.cardText}>
               Tổng: ${(item.total + item.tax + item.deliveryFee).toFixed(2)}
             </Text>
@@ -200,18 +211,26 @@ export default function AdminOrdersScreen() {
         </View>
 
         <View style={styles.cardFooter}>
-          <TouchableOpacity
-            style={[styles.statusButton, { backgroundColor: statusColor }]}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleAdvanceStatus(item);
-            }}
-            disabled={updating}
-          >
-            <Text style={styles.statusButtonText}>
-              {updating ? "..." : statusText}
-            </Text>
-          </TouchableOpacity>
+          {canAdvance ? (
+            <TouchableOpacity
+              style={[styles.statusButton, { backgroundColor: statusColor }]}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleAdvanceStatus(item);
+              }}
+              disabled={updating}
+            >
+              <Text style={styles.statusButtonText}>
+                {updating ? "Đang xử lý..." : item.status === "Shipping" ? "Đã giao" : "Chuyển"}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.statusButton, { backgroundColor: statusColor }]}>
+              <Text style={styles.statusButtonText}>
+                {item.status === "Delivered" ? "Chờ khách xác nhận" : "Đã hoàn tất"}
+              </Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -236,13 +255,15 @@ export default function AdminOrdersScreen() {
             ]}
             onPress={() => setSelectedFilter(filter)}
           >
-            <Text
-              style={[
-                styles.filterBtnText,
-                selectedFilter === filter && styles.filterBtnTextActive,
-              ]}
-            >
-              {filter === "" ? "Tất cả" : filter}
+            <Text style={[
+              styles.filterBtnText,
+              selectedFilter === filter && styles.filterBtnTextActive,
+            ]}>
+              {filter === "" ? "Tất cả" :
+               filter === "Wait Confirmed" ? "Chờ xác nhận" :
+               filter === "Shipping" ? "Đang giao" :
+               filter === "Delivered" ? "Đã giao" :
+               "Đã nhận"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -254,7 +275,9 @@ export default function AdminOrdersScreen() {
           <Text style={styles.loadingText}>Đang tải...</Text>
         </View>
       ) : orders.length === 0 ? (
-        <Text style={styles.emptyText}>Không có đơn hàng</Text>
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>Không có đơn hàng nào</Text>
+        </View>
       ) : (
         <FlatList
           data={orders}
@@ -264,45 +287,60 @@ export default function AdminOrdersScreen() {
         />
       )}
 
+      {/* Modal chi tiết */}
       <Modal visible={!!selectedOrder} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            {selectedOrder && (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Chi tiết đơn #{selectedOrder.id.slice(-6)}</Text>
-                  <TouchableOpacity onPress={() => setSelectedOrder(null)}>
-                    <Text style={styles.closeBtn}>×</Text>
-                  </TouchableOpacity>
-                </View>
+            {selectedOrder && (() => {
+              // Tính màu trạng thái trong modal
+              const modalStatusColor =
+                selectedOrder.status === "Wait Confirmed" ? "#2196F3" :
+                selectedOrder.status === "Shipping" ? "#FF9800" :
+                selectedOrder.status === "Delivered" ? "#9C27B0" :
+                "#4CAF50";
 
-                <Text style={styles.section}>Thông tin</Text>
-                <Text style={styles.infoText}>Khách: {selectedOrder.userName}</Text>
-                <Text style={styles.infoText}>Địa chỉ: {selectedOrder.address}</Text>
-                <Text style={styles.infoText}>Ngày đặt: {formatTime(selectedOrder.createdAt)}</Text>
-                <Text style={styles.infoText}>Phương thức: {selectedOrder.paymentMethod}</Text>
-                <Text style={styles.infoText}>Trạng thái: {selectedOrder.status}</Text>
+              return (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Chi tiết đơn #{selectedOrder.id.slice(-6)}</Text>
+                    <TouchableOpacity onPress={() => setSelectedOrder(null)}>
+                      <Text style={styles.closeBtn}>×</Text>
+                    </TouchableOpacity>
+                  </View>
 
-                <View style={styles.priceBox}>
-                  <Text style={styles.priceLine}>Tiền món: ${selectedOrder.total.toFixed(2)}</Text>
-                  <Text style={styles.priceLine}>Thuế: ${selectedOrder.tax.toFixed(2)}</Text>
-                  <Text style={styles.priceLine}>Phí giao: ${selectedOrder.deliveryFee.toFixed(2)}</Text>
-                  <Text style={styles.totalPrice}>
-                    Tổng: ${(selectedOrder.total + selectedOrder.tax + selectedOrder.deliveryFee).toFixed(2)}
+                  <Text style={styles.section}>Thông tin đơn hàng</Text>
+                  <Text style={styles.infoText}>Khách: {selectedOrder.userName}</Text>
+                  <Text style={styles.infoText}>Địa chỉ: {selectedOrder.address}</Text>
+                  <Text style={styles.infoText}>Thời gian: {formatTime(selectedOrder.createdAt)}</Text>
+                  <Text style={styles.infoText}>Thanh toán: {selectedOrder.paymentMethod}</Text>
+                  <Text style={styles.infoText}>
+                    Trạng thái:{' '}
+                    <Text style={{ fontWeight: "bold", color: modalStatusColor }}>
+                      {DISPLAY_STATUS[selectedOrder.status] || selectedOrder.status}
+                    </Text>
                   </Text>
-                </View>
 
-                <Text style={styles.section}>Sản phẩm</Text>
-                {selectedOrder.items.map((food, i) => (
-                  <View key={i} style={styles.productItem}>
-                    <Text style={styles.productName}>• {food.title}</Text>
-                    <Text style={styles.productDetail}>
-                      {food.numberInCart} × ${food.price.toFixed(2)} = ${(food.price * food.numberInCart).toFixed(2)}
+                  <View style={styles.priceBox}>
+                    <Text style={styles.priceLine}>Tiền món: ${selectedOrder.total.toFixed(2)}</Text>
+                    <Text style={styles.priceLine}>Thuế: ${selectedOrder.tax.toFixed(2)}</Text>
+                    <Text style={styles.priceLine}>Phí ship: ${selectedOrder.deliveryFee.toFixed(2)}</Text>
+                    <Text style={styles.totalPrice}>
+                      Tổng: ${(selectedOrder.total + selectedOrder.tax + selectedOrder.deliveryFee).toFixed(2)}
                     </Text>
                   </View>
-                ))}
-              </ScrollView>
-            )}
+
+                  <Text style={styles.section}>Sản phẩm</Text>
+                  {selectedOrder.items.map((food, i) => (
+                    <View key={i} style={styles.productItem}>
+                      <Text style={styles.productName}>• {food.title}</Text>
+                      <Text style={styles.productDetail}>
+                        {food.numberInCart} × ${food.price.toFixed(2)}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              );
+            })()}
           </View>
         </View>
       </Modal>
@@ -316,7 +354,7 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 16, fontSize: 16, color: "#666" },
   emptyText: { textAlign: "center", marginTop: 60, fontSize: 18, color: "#999" },
 
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "white" },
   headerTitle: { fontSize: 24, fontWeight: "bold", color: "#2c3e50" },
   historyLink: { fontSize: 16, color: "#4CAF50", fontWeight: "600" },
 
@@ -335,7 +373,7 @@ const styles = StyleSheet.create({
   cardDate: { fontSize: 13.5, color: "#27ae60", marginTop: 4, fontWeight: "600" },
   cardText: { fontSize: 14.5, color: "#555", marginTop: 6 },
 
-  cardFooter: { padding: 12, alignItems: "flex-end" },
+  cardFooter: { padding: 16, alignItems: "flex-end" },
   statusButton: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 30 },
   statusButtonText: { color: "white", fontWeight: "bold", fontSize: 15 },
 

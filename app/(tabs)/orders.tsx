@@ -1,7 +1,7 @@
-// app/(tabs)/orders.tsx – ĐÃ CÓ THỜI GIAN ĐẶT ĐƠN + ĐẸP NHƯ GRAB
+// app/(tabs)/orders.tsx - PHIÊN BẢN HOÀN HẢO, KHÔNG LỖI
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { onValue, ref, remove, set } from "firebase/database";
+import { onValue, ref, remove, set, update } from "firebase/database";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,27 +18,45 @@ import {
 import type { Order } from "../../models/Order";
 import { auth, db } from "../../services/firebase";
 
-// Hàm format thời gian đẹp
-const formatOrderTime = (timestamp: number) => {
-  const date = new Date(timestamp);
+// Format thời gian đẹp như Grab
+const formatOrderTime = (timestamp: any): string => {
+  if (!timestamp) return "Vừa xong";
+
+  let date: Date;
+  if (typeof timestamp === "number") {
+    date = new Date(timestamp);
+  } else if (timestamp.toMillis) {
+    date = new Date(timestamp.toMillis());
+  } else {
+    date = new Date(timestamp);
+  }
+
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 60) {
-    return `${diffMins} phút trước`;
-  } else if (diffHours < 24) {
-    return `${diffHours} giờ trước`;
-  } else if (diffDays < 7) {
-    return `${diffDays} ngày trước`;
-  } else {
-    return date.toLocaleDateString("vi-VN") + " " + date.toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
+  if (diffMins < 1) return "Vừa xong";
+  if (diffMins < 60) return `${diffMins} phút trước`;
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  if (diffDays < 7) return `${diffDays} ngày trước`;
+
+  return date.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+// Trạng thái hiển thị đẹp cho khách hàng
+const DISPLAY_STATUS: Record<string, string> = {
+  "Wait Confirmed": "Chờ xác nhận",
+  Shipping: "Đang giao",
+  Delivered: "Đã giao hàng",
+  Received: "Đã nhận hàng",
 };
 
 export default function OrdersScreen() {
@@ -48,12 +66,10 @@ export default function OrdersScreen() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     if (!userId) {
-      setShowLoginDialog(true);
       setLoading(false);
       return;
     }
@@ -64,31 +80,29 @@ export default function OrdersScreen() {
       (snapshot) => {
         const list: Order[] = [];
         snapshot.forEach((child) => {
-          const v: any = child.val();
+          const v = child.val();
           if (!v) return;
+
           list.push({
-            id: child.key || "",
+            id: child.key!,
             items: v.items || [],
-            total: v.total ?? 0,
-            tax: v.tax ?? 0,
-            deliveryFee: v.deliveryFee ?? 0,
-            status: v.status ?? "Wait Confirmed",
-            userId: v.userId ?? userId,
-            userName: v.userName ?? null,
-            address: v.address ?? "",
-            paymentMethod: v.paymentMethod ?? "",
-            bankPaymentInfo: v.bankPaymentInfo ?? null,
-            createdAt: v.createdAt ?? Date.now(), // LẤY THỜI GIAN TẠT
+            total: Number(v.total ?? 0),
+            tax: Number(v.tax ?? 0),
+            deliveryFee: Number(v.deliveryFee ?? 0),
+            status: v.status || "Wait Confirmed",
+            address: v.address || "",
+            paymentMethod: v.paymentMethod || "Cash on Delivery",
+            createdAt: v.createdAt || Date.now(),
           });
         });
 
-        // Sắp xếp đơn mới nhất lên đầu
-        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
+        // Sắp xếp: mới nhất lên đầu
+        list.sort((a, b) => (b.createdAt as number) - (a.createdAt as number));
         setOrders(list);
         setLoading(false);
       },
-      () => {
+      (error) => {
+        console.error(error);
         Alert.alert("Lỗi", "Không thể tải đơn hàng");
         setLoading(false);
       }
@@ -97,32 +111,46 @@ export default function OrdersScreen() {
     return () => unsub();
   }, [userId]);
 
-  function handleMoveToHistory(order: Order) {
-    if (!userId || order.status !== "Received") {
-      Alert.alert("Thông báo", "Chỉ có thể chuyển đơn khi đã nhận hàng");
-      return;
+  const handleConfirmReceived = async (order: Order) => {
+    if (order.status !== "Delivered") return;
+
+    const orderRef = ref(db, `users/${userId}/orders/${order.id}`);
+    try {
+      await update(orderRef, { status: "Received" });
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: "Received" } : o))
+      );
+      Alert.alert("Thành công", "Đã xác nhận nhận hàng");
+    } catch (err) {
+      Alert.alert("Lỗi", "Không thể cập nhật trạng thái");
     }
+  };
+
+  const handleMoveToHistory = async (order: Order) => {
+    if (order.status !== "Received") return;
 
     const orderRef = ref(db, `users/${userId}/orders/${order.id}`);
     const historyRef = ref(db, `users/${userId}/histories/${order.id}`);
 
-    set(historyRef, order)
-      .then(() => remove(orderRef))
-      .then(() => Alert.alert("Thành công", "Đơn đã chuyển sang lịch sử"))
-      .catch(() => Alert.alert("Lỗi", "Không thể chuyển đơn"));
-  }
+    try {
+      await set(historyRef, { ...order, movedToHistoryAt: Date.now() });
+      await remove(orderRef);
+      setOrders((prev) => prev.filter((o) => o.id !== order.id));
+      Alert.alert("Thành công", "Đơn hàng đã được chuyển vào lịch sử");
+    } catch (err) {
+      Alert.alert("Lỗi", "Không thể chuyển đơn");
+    }
+  };
 
-  if (showLoginDialog) {
+  if (!userId) {
     return (
       <View style={styles.center}>
-        <Text style={{ fontSize: 18, marginBottom: 16, textAlign: "center" }}>
-          Vui lòng đăng nhập để xem đơn hàng
-        </Text>
+        <Text style={styles.loginText}>Vui lòng đăng nhập để xem đơn hàng</Text>
         <TouchableOpacity
           style={styles.loginButton}
           onPress={() => router.replace("/(auth)/login")}
         >
-          <Text style={{ color: "white", fontWeight: "bold" }}>Đăng nhập</Text>
+          <Text style={styles.loginButtonText}>Đăng nhập ngay</Text>
         </TouchableOpacity>
       </View>
     );
@@ -140,62 +168,65 @@ export default function OrdersScreen() {
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#FF6B6B" />
-          <Text style={{ marginTop: 12, color: "#666" }}>Đang tải đơn hàng...</Text>
+          <Text style={styles.loadingText}>Đang tải đơn hàng...</Text>
         </View>
       ) : orders.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="receipt-outline" size={80} color="#ddd" />
-          <Text style={{ fontSize: 18, marginTop: 16, color: "#999" }}>
-            Chưa có đơn hàng nào
-          </Text>
+          <Text style={styles.emptyText}>Chưa có đơn hàng nào</Text>
         </View>
       ) : (
         <FlatList
           data={orders}
-          keyExtractor={(o) => o.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 16 }}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <OrderCard
               order={item}
               onPress={() => setSelectedOrder(item)}
-              onStatusPress={() => handleMoveToHistory(item)}
+              onConfirmReceived={() => handleConfirmReceived(item)}
+              onMoveToHistory={() => handleMoveToHistory(item)}
             />
           )}
         />
       )}
 
-      <OrderDetailModal
-        order={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-      />
+      <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
     </View>
   );
 }
 
-// CARD ĐƠN HÀNG – CÓ HIỂN THỊ THỜI GIAN
-function OrderCard({ order, onPress, onStatusPress }: {
+function OrderCard({
+  order,
+  onPress,
+  onConfirmReceived,
+  onMoveToHistory,
+}: {
   order: Order;
   onPress: () => void;
-  onStatusPress: () => void;
+  onConfirmReceived: () => void;
+  onMoveToHistory: () => void;
 }) {
   const firstItem = order.items[0];
+  const displayText = DISPLAY_STATUS[order.status] || order.status;
+  const isDelivered = order.status === "Delivered";
+  const isReceived = order.status === "Received";
 
-  const statusColors: Record<string, string> = {
-    "Wait Confirmed": "#FFA502",
-    "Preparing": "#FF6B6B",
-    "Shipping": "#4ECDC4",
-    "Received": "#45B649",
-    "Cancelled": "#95A5A6",
-  };
+  const hasAction = isDelivered || isReceived; // ✅ Có button hành động hay không
 
-  const statusColor = statusColors[order.status] || "#999";
+  const statusColor =
+    isDelivered || isReceived
+      ? "#9C27B0"
+      : order.status === "Shipping"
+      ? "#4ECDC4"
+      : "#FFA502";
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.95}>
       <View style={styles.cardHeader}>
-        <Text style={styles.orderId}>Đơn hàng #{order.id.slice(-8).toUpperCase()}</Text>
-        <Text style={styles.orderTime}>{formatOrderTime(order.createdAt || Date.now())}</Text>
+        <Text style={styles.orderId}>Đơn #{order.id.slice(-8).toUpperCase()}</Text>
+        <Text style={styles.orderTime}>{formatOrderTime(order.createdAt)}</Text>
       </View>
 
       <View style={styles.cardBody}>
@@ -211,7 +242,7 @@ function OrderCard({ order, onPress, onStatusPress }: {
             Giao đến: {order.address || "Chưa có địa chỉ"}
           </Text>
           <Text style={styles.payment}>
-            {order.paymentMethod === "Cash on Delivery" ? "Thanh toán khi nhận" : "Đã thanh toán online"}
+            {order.paymentMethod.includes("Cash") ? "Thanh toán khi nhận" : "Đã thanh toán"}
           </Text>
         </View>
 
@@ -222,13 +253,26 @@ function OrderCard({ order, onPress, onStatusPress }: {
         </View>
       </View>
 
+      {/* 🔻 CHỖ NÀY ĐÃ SỬA LOGIC HIỂN THỊ */}
       <View style={styles.cardFooter}>
-        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-          <Text style={styles.statusText}>{order.status}</Text>
-        </View>
-        {order.status === "Received" && (
-          <TouchableOpacity onPress={onStatusPress} style={styles.moveBtn}>
-            <Text style={styles.moveText}>Chuyển lịch sử</Text>
+        {/* Chỉ hiện badge trạng thái khi KHÔNG có button hành động */}
+        {!hasAction && (
+          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusText}>{displayText}</Text>
+          </View>
+        )}
+
+        {/* Khi Delivered → chỉ hiện nút Đã nhận hàng (không hiện badge bên trái) */}
+        {isDelivered && (
+          <TouchableOpacity onPress={onConfirmReceived} style={styles.actionBtn}>
+            <Text style={styles.actionText}>Đã nhận hàng</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Khi Received → chỉ hiện nút Chuyển lịch sử (không hiện badge bên trái) */}
+        {isReceived && (
+          <TouchableOpacity onPress={onMoveToHistory} style={styles.actionBtn}>
+            <Text style={styles.actionText}>Chuyển lịch sử</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -236,7 +280,7 @@ function OrderCard({ order, onPress, onStatusPress }: {
   );
 }
 
-// MODAL CHI TIẾT – CÓ THỜI GIAN ĐẶT ĐƠN
+
 function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: () => void }) {
   if (!order) return null;
 
@@ -254,40 +298,38 @@ function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: ()
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Thời gian đặt đơn */}
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Mã đơn hàng</Text>
-              <Text style={styles.infoValue}>#{order.id}</Text>
+              <Text style={styles.infoLabel}>Mã đơn</Text>
+              <Text style={styles.infoValue}>#{order.id.slice(-8).toUpperCase()}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Thời gian đặt</Text>
               <Text style={styles.infoValue}>
-                {new Date(order.createdAt || Date.now()).toLocaleString("vi-VN")}
+                {new Date(order.createdAt as number).toLocaleString("vi-VN")}
               </Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Trạng thái</Text>
-              <Text style={[styles.infoValue, { color: "#45B649", fontWeight: "bold" }]}>
-                {order.status}
+              <Text style={[styles.infoValue, { color: "#9C27B0", fontWeight: "bold" }]}>
+                {DISPLAY_STATUS[order.status] || order.status}
               </Text>
             </View>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Địa chỉ giao</Text>
+              <Text style={styles.infoLabel}>Địa chỉ</Text>
               <Text style={styles.infoValue}>{order.address || "—"}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Thanh toán</Text>
               <Text style={styles.infoValue}>
-                {order.paymentMethod === "Cash on Delivery" ? "Khi nhận hàng" : "Đã thanh toán"}
+                {order.paymentMethod.includes("Cash") ? "Khi nhận hàng" : "Đã thanh toán"}
               </Text>
             </View>
 
             <View style={styles.divider} />
 
-            {/* Danh sách món */}
             <Text style={styles.sectionTitle}>Danh sách món ăn</Text>
-            {order.items.map((item, idx) => (
-              <View key={idx} style={styles.itemRow}>
+            {order.items.map((item, i) => (
+              <View key={i} style={styles.itemRow}>
                 <Text style={styles.itemTitle}>
                   {item.title} × {item.numberInCart}
                 </Text>
@@ -299,7 +341,6 @@ function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: ()
 
             <View style={styles.divider} />
 
-            {/* Tổng tiền */}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Tổng cộng</Text>
               <Text style={styles.totalAmount}>${total.toFixed(2)}</Text>
@@ -313,13 +354,16 @@ function OrderDetailModal({ order, onClose }: { order: Order | null; onClose: ()
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#f8f9fa" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20 },
+  loginText: { fontSize: 18, marginBottom: 20, textAlign: "center", color: "#333" },
   loginButton: {
     backgroundColor: "#FF6B6B",
-    paddingHorizontal: 32,
-    paddingVertical: 14,
+    paddingHorizontal: 40,
+    paddingVertical: 16,
     borderRadius: 12,
   },
+  loginButtonText: { color: "white", fontWeight: "bold", fontSize: 16 },
+
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -332,12 +376,15 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: "bold", color: "#333" },
   historyText: { fontSize: 16, color: "#FF6B6B", fontWeight: "600" },
 
+  loadingText: { marginTop: 12, color: "#666", fontSize: 16 },
+  emptyText: { fontSize: 18, marginTop: 16, color: "#999" },
+
   card: {
     backgroundColor: "white",
     marginHorizontal: 16,
     marginVertical: 8,
     borderRadius: 16,
-    elevation: 6,
+    elevation: 8,
     shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 10,
@@ -348,33 +395,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     padding: 16,
     backgroundColor: "#f0f8ff",
-    borderBottomWidth: 1,
-    borderColor: "#eee",
   },
   orderId: { fontSize: 16, fontWeight: "bold", color: "#333" },
   orderTime: { fontSize: 14, color: "#666" },
-  cardBody: {
-    flexDirection: "row",
-    padding: 16,
-  },
-  itemImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 12,
-  },
-  infoContainer: {
-    flex: 1,
-    marginLeft: 16,
-    justifyContent: "center",
-  },
+
+  cardBody: { flexDirection: "row", padding: 16 },
+  itemImage: { width: 90, height: 90, borderRadius: 12 },
+  infoContainer: { flex: 1, marginLeft: 16, justifyContent: "center" },
   itemCount: { fontSize: 18, fontWeight: "bold", color: "#333" },
   address: { fontSize: 14, color: "#666", marginTop: 4 },
   payment: { fontSize: 14, color: "#45B649", marginTop: 4, fontWeight: "600" },
-  priceContainer: {
-    justifyContent: "center",
-    alignItems: "flex-end",
-  },
+  priceContainer: { justifyContent: "center" },
   totalPrice: { fontSize: 20, fontWeight: "bold", color: "#FF6B6B" },
+
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -383,33 +416,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9f9f9",
   },
   statusBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
     borderRadius: 20,
   },
   statusText: { color: "white", fontWeight: "bold", fontSize: 14 },
-  moveBtn: {
-    backgroundColor: "#f0f0f0",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  actionBtn: {
+    backgroundColor: "#9C27B0",
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 25,
   },
-  moveText: { color: "#666", fontWeight: "600" },
+  actionText: { color: "white", fontWeight: "bold", fontSize: 14 },
 
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    width: "92%",
-    borderRadius: 20,
-    maxHeight: "85%",
-    elevation: 10,
-  },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
+  modalContent: { backgroundColor: "white", width: "92%", borderRadius: 20, maxHeight: "88%", elevation: 10 },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -419,44 +440,15 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
   },
   modalTitle: { fontSize: 20, fontWeight: "bold", color: "#333" },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
+  infoRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 10 },
   infoLabel: { fontSize: 16, color: "#666" },
   infoValue: { fontSize: 16, fontWeight: "600", color: "#333" },
-  divider: {
-    height: 1,
-    backgroundColor: "#eee",
-    marginHorizontal: 20,
-    marginVertical: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    paddingHorizontal: 20,
-    marginTop: 8,
-  },
-  itemRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
+  divider: { height: 1, backgroundColor: "#eee", marginHorizontal: 20, marginVertical: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: "bold", paddingHorizontal: 20, marginTop: 8, color: "#333" },
+  itemRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 10 },
   itemTitle: { fontSize: 16, color: "#333" },
   itemPrice: { fontSize: 16, fontWeight: "600", color: "#FF6B6B" },
-  totalRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 20,
-    backgroundColor: "#f0f8ff",
-    borderRadius: 12,
-    margin: 20,
-    marginTop: 10,
-  },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", padding: 20, backgroundColor: "#f0f8ff", borderRadius: 12, margin: 20, marginTop: 10 },
   totalLabel: { fontSize: 18, fontWeight: "bold" },
   totalAmount: { fontSize: 24, fontWeight: "bold", color: "#FF6B6B" },
 });

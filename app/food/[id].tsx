@@ -44,6 +44,7 @@ export interface Review {
   uid?: string | null; // User ID
   timestamp: number;
   imageUrl?: string | null;
+  avatarUrl?: string | null;
 }
 
 // Định nghĩa kiểu dữ liệu tổ chức reviews để hiển thị
@@ -193,6 +194,7 @@ export default function FoodDetailScreen() {
             imageUrl: v.imageUrl ?? null,
             isPharmacist: v.isPharmacist ?? false,
             parentReviewId: v.parentReviewId ?? null,
+            avatarUrl: v.profilePictureUrl ?? v.avatarUrl ?? null, // ← Đúng rồi!
           };
           list.push(review);
 
@@ -347,8 +349,7 @@ export default function FoodDetailScreen() {
         quality: 0.8,
       });
 
-      if (result.canceled || !result.assets || result.assets.length === 0)
-        return;
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
 
       const uri = result.assets[0].uri;
       setUploadingReviewImage(true);
@@ -362,7 +363,7 @@ export default function FoodDetailScreen() {
     }
   }
 
-  // ==== Submit review/reply (giữ nguyên) ====
+  // ==== Submit review/reply (ĐÃ SỬA HOÀN CHỈNH) ====
   async function submitReview() {
     if (!userId || !user) {
       Alert.alert("Thông báo", "Bạn cần đăng nhập để đánh giá");
@@ -375,39 +376,52 @@ export default function FoodDetailScreen() {
     if (!foodId) return;
 
     try {
-      let fullName: string;
-      const isPharmacistReply = isAdmin; // Sử dụng isAdmin làm isPharmacist
+      const isPharmacistReply = isAdmin;
+
+      // 1. Lấy fullName + avatarUrl
+      let fullName: string = "User";
+      let avatarUrl: string | null = null;
 
       if (isPharmacistReply) {
-        fullName = "Admin/Pharmacist"; // Tên hiển thị khi reply
+        fullName = "Kebab Ngon";
+        avatarUrl = null; // hoặc để ảnh riêng: "https://yourdomain.com/pharmacist-avatar.jpg"
       } else {
-        const userRef = ref(db, `users/${userId}/fullName`);
-        const uSnap = await get(userRef);
-        fullName = (uSnap.val() as string) ?? "User";
+        // Lấy thông tin user từ Realtime Database (chỉ 1 lần query)
+        const userRef = ref(db, `users/${userId}`);
+        const userSnap = await get(userRef);
+        const userData = userSnap.val();
+
+        fullName = userData?.fullName ?? user?.displayName ?? "User";
+        avatarUrl = userData?.profilePictureUrl ?? user?.photoURL ?? null;
       }
 
+      // 2. Tạo review mới
       const reviewsRef = ref(db, `Reviews/${foodId}`);
       const newRef = push(reviewsRef);
 
       const review: Omit<Review, "reviewId"> = {
         userName: fullName,
         uid: userId,
-        // Rating chỉ áp dụng cho đánh giá gốc, không phải reply
         rating: replyingTo ? 0 : newRating,
         comment: newComment.trim(),
         timestamp: Date.now(),
         imageUrl: reviewImageUrl,
         isPharmacist: isPharmacistReply,
-        parentReviewId: replyingTo, // Gán ID của review gốc nếu đang reply
+        parentReviewId: replyingTo,
+        avatarUrl, // Đã có giá trị đúng
       };
 
       await set(newRef, review);
+
+      // Reset form
       setNewComment("");
       setNewRating(5);
       setReviewImageUrl(null);
-      setReplyingTo(null); // Reset trạng thái reply
+      setReplyingTo(null);
+
       Alert.alert("Thành công", "Đã gửi đánh giá/trả lời");
     } catch (e: any) {
+      console.log("Submit review error:", e);
       Alert.alert("Lỗi", e.message ?? "Không gửi được đánh giá/trả lời");
     }
   }
@@ -742,8 +756,8 @@ function ReviewCard({
   review,
   isReply = false,
   onReply,
-  canReply, // Có được hiển thị nút reply không
-  isPharmacist // Người đang xem có phải là Admin/Pharmacist không
+  canReply,
+  isPharmacist
 }: {
   review: Review;
   isReply?: boolean;
@@ -752,30 +766,38 @@ function ReviewCard({
   isPharmacist: boolean;
 }) {
   const isPharmacistReview = review.isPharmacist;
-  // FIX LỖI TypeScript: Đảm bảo fontWeight là chuỗi literal '700'
+
   const nameStyle: TextStyle = { 
-      fontWeight: '700', 
-      color: isPharmacistReview ? "#4B0082" : "#333" 
+    fontWeight: '700', 
+    color: isPharmacistReview ? "#4B0082" : "#333" 
   };
-  
-  // SỬ DỤNG HÀM timeAgo
+
   const relativeTime = timeAgo(review.timestamp);
 
   return (
     <View style={styles.reviewCard}>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <Ionicons
-          name="person-circle"
-          size={32}
-          color={isPharmacistReview ? "#4B0082" : "#999"} // Admin khác màu
-        />
-        <View style={{ marginLeft: 8, flex: 1 }}>
-          {/* SỬ DỤNG nameStyle ĐÃ FIX */}
-          <Text style={nameStyle}>{review.userName} 
+        {/* ẢNH ĐẠI DIỆN THẬT HOẶC FALLBACK ICON */}
+        {review.avatarUrl ? (
+          <Image 
+            source={{ uri: review.avatarUrl }} 
+            style={{ width: 36, height: 36, borderRadius: 18, marginRight: 8 }}
+          />
+        ) : (
+          <Ionicons
+            name="person-circle"
+            size={36}
+            color={isPharmacistReview ? "#4B0082" : "#999"}
+          />
+        )}
+
+        <View style={{ flex: 1 }}>
+          <Text style={nameStyle}>
+            {review.userName}
             {isPharmacistReview && <Text style={{ color: "#4B0082", fontSize: 12 }}> (Pharmacist)</Text>}
           </Text>
           
-          {review.rating > 0 && ( // Chỉ hiển thị rating cho đánh giá gốc
+          {review.rating > 0 && (
             <View style={{ flexDirection: "row" }}>
               {Array.from({ length: Math.round(review.rating) }).map((_, i) => (
                 <Ionicons key={i} name="star" size={14} color="gold" />
@@ -783,30 +805,26 @@ function ReviewCard({
             </View>
           )}
         </View>
-        
+
         {/* Nút Reply */}
-        {canReply && ( // Chỉ hiển thị nếu logic cho phép
+        {canReply && (
           <TouchableOpacity onPress={onReply}>
-            <Text
-              style={{
-                color: "#FF7A00",
-                fontWeight: "600",
-                fontSize: 12,
-              }}
-            >
+            <Text style={{ color: "#FF7A00", fontWeight: "600", fontSize: 12 }}>
               Reply
             </Text>
           </TouchableOpacity>
         )}
       </View>
+
       <Text style={{ marginTop: 4 }}>
         {isReply && <Text style={{ fontWeight: "bold" }}>Re: </Text>}
         {review.comment}
       </Text>
-      {review.imageUrl ? (
+
+      {review.imageUrl && (
         <Image source={{ uri: review.imageUrl }} style={styles.reviewImage} />
-      ) : null}
-      {/* HIỂN THỊ THỜI GIAN TƯƠNG ĐỐI */}
+      )}
+
       <Text style={styles.timestampText}>{relativeTime}</Text>
     </View>
   );
